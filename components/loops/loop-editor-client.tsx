@@ -18,9 +18,9 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
-import { Button, EmptyState, Input, PageHeader } from "@/components/ui";
+import { Button, EmptyState, Input, PageHeader, Select } from "@/components/ui";
 import { formatDuration } from "@/lib/utils";
-import type { LibraryItem, Loop, LoopItem } from "@/types/db";
+import type { LibraryItem, Loop, LoopItem, Orientation } from "@/types/db";
 
 function SortableRow({
   item,
@@ -91,7 +91,11 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [savingMeta, setSavingMeta] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editOrientation, setEditOrientation] =
+    useState<Orientation>("landscape");
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -109,6 +113,8 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
       if (!loopRes.ok) throw new Error(loopJson.error);
       if (!libRes.ok) throw new Error(libJson.error);
       setLoop(loopJson.loop);
+      setEditName(loopJson.loop?.name ?? "");
+      setEditOrientation(loopJson.loop?.orientation ?? "landscape");
       setItems(loopJson.items ?? []);
       setLibrary(libJson.items ?? []);
     } catch (e) {
@@ -201,6 +207,47 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
     await load();
   }
 
+  async function saveLoopMeta() {
+    if (!editName.trim()) {
+      setError("Loop name is required");
+      return;
+    }
+    setSavingMeta(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/loops/${loopId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editName.trim(),
+          orientation: editOrientation,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Could not update loop");
+      setLoop(json.loop);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update loop");
+    } finally {
+      setSavingMeta(false);
+    }
+  }
+
+  async function deleteLoop() {
+    if (!confirm("Delete this loop? This cannot be undone.")) return;
+    const res = await fetch(`/api/loops/${loopId}`, { method: "DELETE" });
+    const json = await res.json();
+    if (!res.ok) {
+      setError(json.error ?? "Could not delete loop");
+      return;
+    }
+    window.location.href = "/loops";
+  }
+
+  const metaDirty =
+    !!loop &&
+    (editName.trim() !== loop.name || editOrientation !== loop.orientation);
+
   return (
     <div>
       <PageHeader
@@ -215,6 +262,10 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
             <Link href="/loops">
               <Button variant="secondary">Back to loops</Button>
             </Link>
+            <Button variant="danger" onClick={() => void deleteLoop()}>
+              <Trash2 className="h-4 w-4" />
+              Delete
+            </Button>
             <Button onClick={() => setShowPicker((v) => !v)}>
               <Plus className="h-4 w-4" />
               Add from Library
@@ -222,6 +273,42 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
           </>
         }
       />
+
+      {loop ? (
+        <div className="mb-6 grid max-w-2xl gap-3 rounded-lg border border-zinc-200 p-4 sm:grid-cols-[1fr_auto_auto]">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-zinc-500">
+              Name
+            </label>
+            <Input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-zinc-500">
+              Orientation
+            </label>
+            <Select
+              value={editOrientation}
+              onChange={(e) =>
+                setEditOrientation(e.target.value as Orientation)
+              }
+            >
+              <option value="landscape">Landscape</option>
+              <option value="portrait">Portrait</option>
+            </Select>
+          </div>
+          <div className="flex items-end">
+            <Button
+              onClick={() => void saveLoopMeta()}
+              disabled={!metaDirty || savingMeta}
+            >
+              {savingMeta ? "Saving…" : "Save details"}
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       {error ? (
         <p className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

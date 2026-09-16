@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import {
   Button,
   EmptyState,
@@ -12,6 +12,12 @@ import {
 } from "@/components/ui";
 import type { Loop, Orientation } from "@/types/db";
 
+type EditState = {
+  id: string;
+  name: string;
+  orientation: Orientation;
+};
+
 export function LoopsClient() {
   const [loops, setLoops] = useState<Loop[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,6 +26,8 @@ export function LoopsClient() {
   const [name, setName] = useState("");
   const [orientation, setOrientation] = useState<Orientation>("landscape");
   const [creating, setCreating] = useState(false);
+  const [edit, setEdit] = useState<EditState | null>(null);
+  const [saving, setSaving] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -72,13 +80,41 @@ export function LoopsClient() {
     }
   }
 
-  async function deleteLoop(id: string) {
-    if (!confirm("Delete this loop?")) return;
-    const res = await fetch("/api/loops", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
+  function openEdit(loop: Loop) {
+    setEdit({
+      id: loop.id,
+      name: loop.name,
+      orientation: loop.orientation,
     });
+  }
+
+  async function saveEdit() {
+    if (!edit || !edit.name.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/loops/${edit.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: edit.name.trim(),
+          orientation: edit.orientation,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      setEdit(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update loop");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteLoop(id: string) {
+    if (!confirm("Delete this loop? Items inside it will be removed.")) return;
+    const res = await fetch(`/api/loops/${id}`, { method: "DELETE" });
     const json = await res.json();
     if (!res.ok) {
       setError(json.error ?? "Delete failed");
@@ -91,7 +127,7 @@ export function LoopsClient() {
     <div>
       <PageHeader
         title="Loops"
-        description="Build playlists from your library assets."
+        description="Create, edit, and manage playlists from your library."
         actions={
           <Button onClick={() => setShowCreate(true)}>
             <Plus className="h-4 w-4" />
@@ -173,7 +209,7 @@ export function LoopsClient() {
                 <th className="px-4 py-2 font-medium">Name</th>
                 <th className="px-4 py-2 font-medium">Orientation</th>
                 <th className="px-4 py-2 font-medium">Updated</th>
-                <th className="px-4 py-2 font-medium" />
+                <th className="px-4 py-2 font-medium">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
@@ -193,14 +229,33 @@ export function LoopsClient() {
                   <td className="px-4 py-3 text-zinc-500">
                     {new Date(loop.updated_at).toLocaleString()}
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => void deleteLoop(loop.id)}
-                      className="text-zinc-400 hover:text-red-600"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openEdit(loop)}
+                        className="text-zinc-500 hover:text-teal-700"
+                        aria-label="Edit loop"
+                        title="Edit"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <Link
+                        href={`/loops/${loop.id}`}
+                        className="text-xs font-medium text-teal-700 hover:underline"
+                      >
+                        Items
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => void deleteLoop(loop.id)}
+                        className="text-zinc-400 hover:text-red-600"
+                        aria-label="Delete loop"
+                        title="Delete"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -208,6 +263,54 @@ export function LoopsClient() {
           </table>
         </div>
       )}
+
+      {edit ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-lg">
+            <h2 className="text-lg font-semibold">Edit Loop</h2>
+            <div className="mt-4 grid gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-zinc-500">
+                  Name
+                </label>
+                <Input
+                  value={edit.name}
+                  onChange={(e) => setEdit({ ...edit, name: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void saveEdit();
+                  }}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-zinc-500">
+                  Orientation
+                </label>
+                <Select
+                  className="w-full"
+                  value={edit.orientation}
+                  onChange={(e) =>
+                    setEdit({
+                      ...edit,
+                      orientation: e.target.value as Orientation,
+                    })
+                  }
+                >
+                  <option value="landscape">Landscape</option>
+                  <option value="portrait">Portrait</option>
+                </Select>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setEdit(null)}>
+                Cancel
+              </Button>
+              <Button onClick={() => void saveEdit()} disabled={saving}>
+                {saving ? "Saving…" : "Save"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
