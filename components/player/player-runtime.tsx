@@ -103,9 +103,19 @@ export function PlayerRuntime({ playerId }: { playerId: string }) {
       const res = await fetch(`/api/players/${playerId}/playback`, {
         cache: "no-store",
       });
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) {
+        throw new Error(
+          res.status === 401 || res.status === 404
+            ? "Playback API blocked or missing — check auth middleware"
+            : `Unexpected response (${res.status})`,
+        );
+      }
       const json = (await res.json()) as PlaybackPayload & { error?: string };
       if (!res.ok) throw new Error(json.error ?? "Failed to load playback");
       applyPayload(json, false);
+      setError(null);
+      setOffline(false);
       return true;
     } catch (e) {
       const cached = await readCachedPlayback(playerId);
