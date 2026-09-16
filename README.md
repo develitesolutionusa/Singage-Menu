@@ -49,4 +49,12 @@ npm run dev
 6. Edit the player to assign a loop
 7. Confirm counts on **Overview**
 
-Playback/realtime is Phase 2.
+## Phase 2 — Player playback
+
+1. Open `/player` (redirects to `/player/[playerId]`)
+2. Pair + assign a loop as in Phase 1
+3. The player screen plays the loop fullscreen (respects item durations + rotation)
+4. Edit the loop in the dashboard — player updates live (Realtime, with polling fallback)
+5. Players list online/Last Connected updates via 30s heartbeat (Redis when configured, else Supabase)
+
+Optional: set `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` for fast heartbeat storage.

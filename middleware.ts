@@ -16,10 +16,14 @@ const isProtectedRoute = createRouteMatcher([
   "/api/announcements(.*)",
 ]);
 
-const isPublicPairInit = createRouteMatcher(["/api/players/pair/init"]);
+const isPublicPlayerApi = createRouteMatcher([
+  "/api/players/pair/init",
+  "/api/players/(.*)/playback",
+  "/api/players/(.*)/heartbeat",
+]);
 
 export default clerkMiddleware(async (auth, req) => {
-  if (isPublicPairInit(req)) return;
+  if (isPublicPlayerApi(req)) return;
   if (isProtectedRoute(req)) {
     await auth.protect();
   }

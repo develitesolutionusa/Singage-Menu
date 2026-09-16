@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { Plus, Pencil, Trash2, ExternalLink } from "lucide-react";
 import {
   Button,
   EmptyState,
@@ -48,8 +49,8 @@ export function PlayersClient() {
   const [edit, setEdit] = useState<EditState | null>(null);
   const [saving, setSaving] = useState(false);
 
-  async function load() {
-    setLoading(true);
+  async function load(opts?: { silent?: boolean }) {
+    if (!opts?.silent) setLoading(true);
     setError(null);
     try {
       const [playersRes, loopsRes] = await Promise.all([
@@ -65,12 +66,16 @@ export function PlayersClient() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load players");
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   }
 
   useEffect(() => {
     void load();
+    const id = setInterval(() => {
+      void load({ silent: true });
+    }, 30_000);
+    return () => clearInterval(id);
   }, []);
 
   async function pairPlayer() {
@@ -153,7 +158,7 @@ export function PlayersClient() {
     <div>
       <PageHeader
         title="Players"
-        description="Pair devices and assign a loop for Phase 1 playback."
+        description="Pair devices, assign a loop, and monitor online status via heartbeat."
         actions={
           <Button onClick={() => setShowPair(true)}>
             <Plus className="h-4 w-4" />
@@ -257,6 +262,15 @@ export function PlayersClient() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
+                      <Link
+                        href={`/player/${player.id}`}
+                        target="_blank"
+                        className="text-zinc-500 hover:text-teal-700"
+                        aria-label="Open player screen"
+                        title="Open player screen"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </Link>
                       <button
                         type="button"
                         onClick={() => openEdit(player)}
