@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { ListPlus, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   Button,
+  ConfirmDialog,
   EmptyState,
   Input,
   PageHeader,
@@ -28,6 +29,8 @@ export function LoopsClient() {
   const [creating, setCreating] = useState(false);
   const [edit, setEdit] = useState<EditState | null>(null);
   const [saving, setSaving] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -113,18 +116,41 @@ export function LoopsClient() {
   }
 
   async function deleteLoop(id: string) {
-    if (!confirm("Delete this loop? Items inside it will be removed.")) return;
-    const res = await fetch(`/api/loops/${id}`, { method: "DELETE" });
-    const json = await res.json();
-    if (!res.ok) {
-      setError(json.error ?? "Delete failed");
-      return;
+    setPendingDeleteId(id);
+  }
+
+  async function confirmDeleteLoop() {
+    if (!pendingDeleteId) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/loops/${pendingDeleteId}`, {
+        method: "DELETE",
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json.error ?? "Delete failed");
+        return;
+      }
+      setPendingDeleteId(null);
+      await load();
+    } finally {
+      setDeleting(false);
     }
-    await load();
   }
 
   return (
     <div>
+      <ConfirmDialog
+        open={pendingDeleteId !== null}
+        title="Delete this loop?"
+        description="Items inside it will be removed."
+        busy={deleting}
+        onCancel={() => {
+          if (!deleting) setPendingDeleteId(null);
+        }}
+        onConfirm={() => void confirmDeleteLoop()}
+      />
       <PageHeader
         title="Loops"
         description="Create, edit, and manage playlists from your library."
@@ -242,9 +268,11 @@ export function LoopsClient() {
                       </button>
                       <Link
                         href={`/loops/${loop.id}`}
-                        className="text-xs font-medium text-teal-700 hover:underline"
+                        className="text-zinc-500 hover:text-teal-700"
+                        aria-label="Add items to loop"
+                        title="Add items"
                       >
-                        Items
+                        <ListPlus className="h-4 w-4" />
                       </Link>
                       <button
                         type="button"

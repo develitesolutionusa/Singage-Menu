@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Plus, Trash2 } from "lucide-react";
 import {
   Button,
+  ConfirmDialog,
   EmptyState,
   Input,
   PageHeader,
@@ -56,6 +57,12 @@ export function CampaignEditorClient({ campaignId }: { campaignId: string }) {
   const [exEnd, setExEnd] = useState("");
   const [exDays, setExDays] = useState<number[]>([]);
   const [exEnabled, setExEnabled] = useState(true);
+  const [pendingDelete, setPendingDelete] = useState<
+    | { kind: "campaign" }
+    | { kind: "exception"; id: string }
+    | null
+  >(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -229,37 +236,69 @@ export function CampaignEditorClient({ campaignId }: { campaignId: string }) {
   }
 
   async function deleteException(exceptionId: string) {
-    if (!confirm("Delete this exception?")) return;
-    const res = await fetch(`/api/campaigns/${campaignId}/exceptions`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ exceptionId }),
-    });
-    const json = await res.json();
-    if (!res.ok) {
-      setError(json.error ?? "Could not delete exception");
-      return;
-    }
-    await load();
+    setPendingDelete({ kind: "exception", id: exceptionId });
   }
 
   async function deleteCampaign() {
-    if (!confirm("Delete this campaign?")) return;
-    const res = await fetch(`/api/campaigns/${campaignId}`, {
-      method: "DELETE",
-    });
-    const json = await res.json();
-    if (!res.ok) {
-      setError(json.error ?? "Could not delete");
-      return;
+    setPendingDelete({ kind: "campaign" });
+  }
+
+  async function confirmPendingDelete() {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      if (pendingDelete.kind === "exception") {
+        const res = await fetch(`/api/campaigns/${campaignId}/exceptions`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ exceptionId: pendingDelete.id }),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          setError(json.error ?? "Could not delete exception");
+          return;
+        }
+        setPendingDelete(null);
+        await load();
+      } else {
+        const res = await fetch(`/api/campaigns/${campaignId}`, {
+          method: "DELETE",
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          setError(json.error ?? "Could not delete");
+          return;
+        }
+        window.location.href = "/campaigns";
+      }
+    } finally {
+      setDeleting(false);
     }
-    window.location.href = "/campaigns";
   }
 
   const attachedLoopIds = new Set(campaignLoops.map((r) => r.loop_id));
 
   return (
     <div>
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={
+          pendingDelete?.kind === "exception"
+            ? "Delete this exception?"
+            : "Delete this campaign?"
+        }
+        description={
+          pendingDelete?.kind === "exception"
+            ? "The schedule override will be removed."
+            : "Assigned players will no longer receive this campaign."
+        }
+        busy={deleting}
+        onCancel={() => {
+          if (!deleting) setPendingDelete(null);
+        }}
+        onConfirm={() => void confirmPendingDelete()}
+      />
       <PageHeader
         title={campaign?.name ?? "Campaign"}
         description="Loops play in order. Exceptions override the schedule on matching dates."

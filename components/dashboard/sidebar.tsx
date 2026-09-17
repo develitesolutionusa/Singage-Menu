@@ -9,7 +9,7 @@ import {
   Monitor,
   UserRound,
 } from "lucide-react";
-import { OrganizationSwitcher, UserButton } from "@clerk/nextjs";
+import { OrganizationSwitcher } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -23,7 +23,7 @@ const NAV = [
 
 export function Sidebar({ pathname }: { pathname: string }) {
   return (
-    <aside className="flex h-full w-60 shrink-0 flex-col border-r border-zinc-200 bg-zinc-50">
+    <aside className="flex h-screen w-60 shrink-0 flex-col border-r border-zinc-200 bg-zinc-50">
       <div className="flex h-14 items-center gap-2 border-b border-zinc-200 px-4">
         <div className="flex h-8 w-8 items-center justify-center rounded-md bg-teal-700 text-sm font-semibold text-white">
           S
@@ -51,7 +51,7 @@ export function Sidebar({ pathname }: { pathname: string }) {
         />
       </div>
 
-      <nav className="flex flex-1 flex-col gap-0.5 p-3">
+      <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-3">
         {NAV.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
@@ -71,14 +71,6 @@ export function Sidebar({ pathname }: { pathname: string }) {
           );
         })}
       </nav>
-
-      <div className="border-t border-zinc-200 p-3">
-        <UserButton
-          appearance={{
-            elements: { userButtonAvatarBox: "h-8 w-8" },
-          }}
-        />
-      </div>
     </aside>
   );
 }

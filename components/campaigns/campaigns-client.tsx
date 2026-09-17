@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import {
   Button,
+  ConfirmDialog,
   EmptyState,
   Input,
   PageHeader,
@@ -28,6 +29,8 @@ export function CampaignsClient() {
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [mainLoopId, setMainLoopId] = useState("");
   const [creating, setCreating] = useState(false);
 
@@ -82,18 +85,41 @@ export function CampaignsClient() {
   }
 
   async function deleteCampaign(id: string) {
-    if (!confirm("Delete this campaign?")) return;
-    const res = await fetch(`/api/campaigns/${id}`, { method: "DELETE" });
-    const json = await res.json();
-    if (!res.ok) {
-      setError(json.error ?? "Delete failed");
-      return;
+    setPendingDeleteId(id);
+  }
+
+  async function confirmDeleteCampaign() {
+    if (!pendingDeleteId) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/campaigns/${pendingDeleteId}`, {
+        method: "DELETE",
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json.error ?? "Delete failed");
+        return;
+      }
+      setPendingDeleteId(null);
+      await load();
+    } finally {
+      setDeleting(false);
     }
-    await load();
   }
 
   return (
     <div>
+      <ConfirmDialog
+        open={pendingDeleteId !== null}
+        title="Delete this campaign?"
+        description="Assigned players will no longer receive this campaign."
+        busy={deleting}
+        onCancel={() => {
+          if (!deleting) setPendingDeleteId(null);
+        }}
+        onConfirm={() => void confirmDeleteCampaign()}
+      />
       <PageHeader
         title="Campaigns"
         description="Schedule loops, assign players, and set date exceptions."
@@ -200,20 +226,23 @@ export function CampaignsClient() {
                     {campaign.playersCount}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                       <Link
                         href={`/campaigns/${campaign.id}`}
-                        className="text-xs font-medium text-teal-700 hover:underline"
+                        className="inline-flex items-center justify-center rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-teal-700"
+                        aria-label="Edit campaign"
+                        title="Edit"
                       >
-                        Edit
+                        <Pencil className="h-4 w-4" strokeWidth={2} />
                       </Link>
                       <button
                         type="button"
                         onClick={() => void deleteCampaign(campaign.id)}
-                        className="text-zinc-400 hover:text-red-600"
+                        className="inline-flex items-center justify-center rounded-md p-1.5 text-zinc-400 hover:bg-red-50 hover:text-red-600"
                         aria-label="Delete campaign"
+                        title="Delete"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4" strokeWidth={2} />
                       </button>
                     </div>
                   </td>

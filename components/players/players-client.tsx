@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Plus, Pencil, Trash2, ExternalLink } from "lucide-react";
 import {
   Button,
+  ConfirmDialog,
   EmptyState,
   Input,
   PageHeader,
@@ -48,6 +49,8 @@ export function PlayersClient() {
   const [pairing, setPairing] = useState(false);
   const [edit, setEdit] = useState<EditState | null>(null);
   const [saving, setSaving] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   async function load(opts?: { silent?: boolean }) {
     if (!opts?.silent) setLoading(true);
@@ -144,18 +147,41 @@ export function PlayersClient() {
   }
 
   async function deletePlayer(id: string) {
-    if (!confirm("Delete this player?")) return;
-    const res = await fetch(`/api/players/${id}`, { method: "DELETE" });
-    const json = await res.json();
-    if (!res.ok) {
-      setError(json.error ?? "Delete failed");
-      return;
+    setPendingDeleteId(id);
+  }
+
+  async function confirmDeletePlayer() {
+    if (!pendingDeleteId) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/players/${pendingDeleteId}`, {
+        method: "DELETE",
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json.error ?? "Delete failed");
+        return;
+      }
+      setPendingDeleteId(null);
+      await load();
+    } finally {
+      setDeleting(false);
     }
-    await load();
   }
 
   return (
     <div>
+      <ConfirmDialog
+        open={pendingDeleteId !== null}
+        title="Delete this player?"
+        description="The device will need to be paired again to reconnect."
+        busy={deleting}
+        onCancel={() => {
+          if (!deleting) setPendingDeleteId(null);
+        }}
+        onConfirm={() => void confirmDeletePlayer()}
+      />
       <PageHeader
         title="Players"
         description="Pair devices, assign a campaign, and monitor online status."

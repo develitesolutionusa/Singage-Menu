@@ -140,7 +140,7 @@ Goal: replace the Phase-1 direct loop-on-player assignment with the real Campaig
 
 **Exit criteria for Phase 3**: assigning a Campaign (with an Exception active) to a player correctly overrides the normal loop on the right dates, live.
 
----
+--- 
 
 ## PHASE 4 — Cloud Setup & Monitoring
 
@@ -180,7 +180,7 @@ CLERK_SECRET_KEY=
 UPSTASH_REDIS_REST_URL=
 UPSTASH_REDIS_REST_TOKEN=
 SENTRY_DSN=
-```
+``` 
 
 Never commit real values. Use `.env.local` locally, Vercel env settings in deploy.
 

@@ -18,7 +18,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
-import { Button, EmptyState, Input, PageHeader, Select } from "@/components/ui";
+import { Button, ConfirmDialog, EmptyState, Input, PageHeader, Select } from "@/components/ui";
 import { formatDuration } from "@/lib/utils";
 import type { LibraryItem, Loop, LoopItem, Orientation } from "@/types/db";
 
@@ -89,6 +89,7 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
   const [loop, setLoop] = useState<Loop | null>(null);
   const [items, setItems] = useState<LoopItem[]>([]);
   const [library, setLibrary] = useState<LibraryItem[]>([]);
+  const [folderNames, setFolderNames] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savingMeta, setSavingMeta] = useState(false);
@@ -96,6 +97,8 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
   const [editName, setEditName] = useState("");
   const [editOrientation, setEditOrientation] =
     useState<Orientation>("landscape");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -104,19 +107,27 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [loopRes, libRes] = await Promise.all([
+      const [loopRes, libRes, foldersRes] = await Promise.all([
         fetch(`/api/loops/${loopId}/items`),
-        fetch("/api/library?folderId=root&sort=name&order=asc"),
+        fetch("/api/library?folderId=all&sort=name&order=asc"),
+        fetch("/api/library/folders?parentId=all"),
       ]);
       const loopJson = await loopRes.json();
       const libJson = await libRes.json();
+      const foldersJson = await foldersRes.json();
       if (!loopRes.ok) throw new Error(loopJson.error);
       if (!libRes.ok) throw new Error(libJson.error);
+      if (!foldersRes.ok) throw new Error(foldersJson.error);
       setLoop(loopJson.loop);
       setEditName(loopJson.loop?.name ?? "");
       setEditOrientation(loopJson.loop?.orientation ?? "landscape");
       setItems(loopJson.items ?? []);
       setLibrary(libJson.items ?? []);
+      const names: Record<string, string> = {};
+      for (const folder of foldersJson.folders ?? []) {
+        names[folder.id] = folder.name;
+      }
+      setFolderNames(names);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load loop");
     }
@@ -130,6 +141,15 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
     () => items.reduce((sum, item) => sum + Number(item.duration_seconds || 0), 0),
     [items],
   );
+
+  const availableLibrary = useMemo(() => {
+    const used = new Set(
+      items
+        .map((item) => item.library_item_id)
+        .filter((id): id is string => Boolean(id)),
+    );
+    return library.filter((asset) => !used.has(asset.id));
+  }, [library, items]);
 
   async function persistOrder(next: LoopItem[]) {
     setSaving(true);
@@ -189,7 +209,6 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
       setError(json.error ?? "Could not add asset");
       return;
     }
-    setShowPicker(false);
     await load();
   }
 
@@ -234,14 +253,23 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
   }
 
   async function deleteLoop() {
-    if (!confirm("Delete this loop? This cannot be undone.")) return;
-    const res = await fetch(`/api/loops/${loopId}`, { method: "DELETE" });
-    const json = await res.json();
-    if (!res.ok) {
-      setError(json.error ?? "Could not delete loop");
-      return;
+    setConfirmDelete(true);
+  }
+
+  async function confirmDeleteLoop() {
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/loops/${loopId}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json.error ?? "Could not delete loop");
+        return;
+      }
+      window.location.href = "/loops";
+    } finally {
+      setDeleting(false);
     }
-    window.location.href = "/loops";
   }
 
   const metaDirty =
@@ -250,6 +278,16 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
 
   return (
     <div>
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Delete this loop?"
+        description="This cannot be undone."
+        busy={deleting}
+        onCancel={() => {
+          if (!deleting) setConfirmDelete(false);
+        }}
+        onConfirm={() => void confirmDeleteLoop()}
+      />
       <PageHeader
         title={loop?.name ?? "Loop Editor"}
         description={
@@ -318,13 +356,15 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
 
       {showPicker ? (
         <div className="mb-6 max-h-64 overflow-auto rounded-lg border border-zinc-200">
-          {library.length === 0 ? (
+          {availableLibrary.length === 0 ? (
             <p className="p-4 text-sm text-zinc-500">
-              No library items yet. Upload media first.
+              {library.length === 0
+                ? "No library items yet. Upload media first."
+                : "All library items are already in this loop."}
             </p>
           ) : (
             <ul className="divide-y divide-zinc-100">
-              {library.map((asset) => (
+              {availableLibrary.map((asset) => (
                 <li
                   key={asset.id}
                   className="flex items-center justify-between gap-3 px-4 py-2"
@@ -333,6 +373,10 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
                     <p className="truncate text-sm font-medium">{asset.name}</p>
                     <p className="text-xs capitalize text-zinc-500">
                       {asset.file_type}
+                      {" · "}
+                      {asset.folder_id
+                        ? (folderNames[asset.folder_id] ?? "Folder")
+                        : "Root"}
                     </p>
                   </div>
                   <Button

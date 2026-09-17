@@ -23,7 +23,9 @@ export async function GET(request: Request) {
     .select("*")
     .eq("clerk_org_id", ctx.orgId);
 
-  if (folderId === "root" || !folderId) {
+  if (folderId === "all") {
+    // every item in the org (used by loop picker)
+  } else if (folderId === "root" || !folderId) {
     query = query.is("folder_id", null);
   } else {
     query = query.eq("folder_id", folderId);
@@ -147,6 +149,54 @@ export async function POST(request: Request) {
   });
 
   return NextResponse.json({ items: uploaded }, { status: 201 });
+}
+
+/** Move items between folders (folderId null = root). */
+export async function PATCH(request: Request) {
+  const ctx = await requireOrg();
+  if (!isOrgContext(ctx)) return ctx.error;
+
+  const body = z
+    .object({
+      ids: z.array(z.string().uuid()).min(1),
+      folderId: z.string().uuid().nullable(),
+    })
+    .parse(await request.json());
+
+  const supabase = createServiceClient();
+
+  if (body.folderId) {
+    const { data: folder } = await supabase
+      .from("library_folders")
+      .select("id")
+      .eq("clerk_org_id", ctx.orgId)
+      .eq("id", body.folderId)
+      .maybeSingle();
+    if (!folder) {
+      return NextResponse.json({ error: "Folder not found" }, { status: 404 });
+    }
+  }
+
+  const { data, error } = await supabase
+    .from("library_items")
+    .update({ folder_id: body.folderId })
+    .eq("clerk_org_id", ctx.orgId)
+    .in("id", body.ids)
+    .select("id");
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  await logActivity({
+    orgId: ctx.orgId,
+    actorId: ctx.userId,
+    action: `Moved ${body.ids.length} library item${body.ids.length === 1 ? "" : "s"}`,
+    entityType: "library",
+    metadata: { folderId: body.folderId },
+  });
+
+  return NextResponse.json({ ok: true, moved: data?.length ?? 0 });
 }
 
 export async function DELETE(request: Request) {
