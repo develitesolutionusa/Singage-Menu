@@ -8,7 +8,7 @@ export async function GET() {
 
   const supabase = createServiceClient();
 
-  const [library, loops, players, activities, announcements] =
+  const [library, loops, players, campaigns, activities, announcements] =
     await Promise.all([
       supabase
         .from("library_items")
@@ -20,6 +20,10 @@ export async function GET() {
         .eq("clerk_org_id", ctx.orgId),
       supabase
         .from("players")
+        .select("id", { count: "exact", head: true })
+        .eq("clerk_org_id", ctx.orgId),
+      supabase
+        .from("campaigns")
         .select("id", { count: "exact", head: true })
         .eq("clerk_org_id", ctx.orgId),
       supabase
@@ -46,7 +50,7 @@ export async function GET() {
       librarySizeBytes,
       loopsCount: loops.count ?? 0,
       playersCount: players.count ?? 0,
-      campaignsCount: 0,
+      campaignsCount: campaigns.count ?? 0,
     },
     activities: activities.data ?? [],
     announcements: announcements.data ?? [],

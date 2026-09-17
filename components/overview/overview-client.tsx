@@ -59,9 +59,8 @@ export function OverviewClient() {
     },
     {
       label: "Campaigns",
-      value: data ? String(data.stats.campaignsCount) : "0",
+      value: data ? String(data.stats.campaignsCount) : "—",
       icon: Megaphone,
-      hint: "Coming in Phase 3",
     },
   ];
 
@@ -91,9 +90,6 @@ export function OverviewClient() {
             <p className="mt-2 text-2xl font-semibold tracking-tight">
               {stat.value}
             </p>
-            {"hint" in stat && stat.hint ? (
-              <p className="mt-1 text-xs text-zinc-400">{stat.hint}</p>
-            ) : null}
           </div>
         ))}
       </div>

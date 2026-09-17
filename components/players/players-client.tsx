@@ -11,7 +11,7 @@ import {
   Select,
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import type { Loop, Player, PlayerRotation } from "@/types/db";
+import type { Campaign, Player, PlayerRotation } from "@/types/db";
 
 const TIMEZONES = [
   "UTC",
@@ -34,12 +34,12 @@ type EditState = {
   location: string;
   timezone: string;
   rotation: PlayerRotation;
-  loopId: string;
+  campaignId: string;
 };
 
 export function PlayersClient() {
   const [players, setPlayers] = useState<Player[]>([]);
-  const [loops, setLoops] = useState<Loop[]>([]);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showPair, setShowPair] = useState(false);
@@ -53,16 +53,16 @@ export function PlayersClient() {
     if (!opts?.silent) setLoading(true);
     setError(null);
     try {
-      const [playersRes, loopsRes] = await Promise.all([
+      const [playersRes, campaignsRes] = await Promise.all([
         fetch("/api/players"),
-        fetch("/api/loops"),
+        fetch("/api/campaigns"),
       ]);
       const playersJson = await playersRes.json();
-      const loopsJson = await loopsRes.json();
+      const campaignsJson = await campaignsRes.json();
       if (!playersRes.ok) throw new Error(playersJson.error);
-      if (!loopsRes.ok) throw new Error(loopsJson.error);
+      if (!campaignsRes.ok) throw new Error(campaignsJson.error);
       setPlayers(playersJson.players ?? []);
-      setLoops(loopsJson.loops ?? []);
+      setCampaigns(campaignsJson.campaigns ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load players");
     } finally {
@@ -111,7 +111,7 @@ export function PlayersClient() {
       location: player.location ?? "",
       timezone: player.timezone,
       rotation: player.rotation,
-      loopId: player.loop_id ?? "",
+      campaignId: player.campaign_id ?? "",
     });
   }
 
@@ -129,7 +129,7 @@ export function PlayersClient() {
           location: edit.location || null,
           timezone: edit.timezone,
           rotation: edit.rotation,
-          loopId: edit.loopId || null,
+          campaignId: edit.campaignId || null,
         }),
       });
       const json = await res.json();
@@ -158,7 +158,7 @@ export function PlayersClient() {
     <div>
       <PageHeader
         title="Players"
-        description="Pair devices, assign a loop, and monitor online status via heartbeat."
+        description="Pair devices, assign a campaign, and monitor online status."
         actions={
           <Button onClick={() => setShowPair(true)}>
             <Plus className="h-4 w-4" />
@@ -374,19 +374,19 @@ export function PlayersClient() {
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-zinc-500">
-                  Assigned loop (Phase 1)
+                  Assigned campaign
                 </label>
                 <Select
                   className="w-full"
-                  value={edit.loopId}
+                  value={edit.campaignId}
                   onChange={(e) =>
-                    setEdit({ ...edit, loopId: e.target.value })
+                    setEdit({ ...edit, campaignId: e.target.value })
                   }
                 >
-                  <option value="">No loop</option>
-                  {loops.map((loop) => (
-                    <option key={loop.id} value={loop.id}>
-                      {loop.name}
+                  <option value="">No campaign</option>
+                  {campaigns.map((campaign) => (
+                    <option key={campaign.id} value={campaign.id}>
+                      {campaign.name}
                     </option>
                   ))}
                 </Select>

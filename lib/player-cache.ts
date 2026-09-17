@@ -10,14 +10,25 @@ export type PlaybackItem = {
 };
 
 export type PlaybackPayload = {
-  state: "unpaired" | "paired_no_loop" | "playing";
+  state: "unpaired" | "paired_no_loop" | "paired_no_campaign" | "playing";
   player: {
     id: string;
     pairingCode: string | null;
     rotation: 0 | 90 | 180 | 270;
     name: string;
     loopId?: string | null;
+    campaignId?: string | null;
   };
+  campaign?: {
+    id: string;
+    name: string;
+    updatedAt: string;
+  } | null;
+  exception?: {
+    id: string;
+    name: string;
+    overrideLoopId: string;
+  } | null;
   loop: {
     id: string;
     name: string;
@@ -26,6 +37,8 @@ export type PlaybackPayload = {
   } | null;
   items: PlaybackItem[];
   updatedAt: string;
+  resolution?: "exception" | "campaign";
+  localDate?: string;
 };
 
 const DB_NAME = "signage-player-cache";

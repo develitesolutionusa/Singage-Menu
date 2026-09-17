@@ -57,12 +57,56 @@ export type Player = {
   location: string | null;
   timezone: string;
   rotation: PlayerRotation;
+  /** @deprecated Phase 1 shortcut — use campaign_id */
   loop_id: string | null;
+  campaign_id: string | null;
   pairing_code: string | null;
   status: PlayerStatus;
   last_seen_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type Campaign = {
+  id: string;
+  clerk_org_id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CampaignLoop = {
+  id: string;
+  clerk_org_id: string;
+  campaign_id: string;
+  loop_id: string;
+  position: number;
+  created_at: string;
+  loop?: Loop | null;
+};
+
+export type CampaignPlayer = {
+  id: string;
+  clerk_org_id: string;
+  campaign_id: string;
+  player_id: string;
+  created_at: string;
+  player?: Player | null;
+};
+
+export type CampaignException = {
+  id: string;
+  clerk_org_id: string;
+  campaign_id: string;
+  name: string;
+  override_loop_id: string;
+  start_date: string | null;
+  end_date: string | null;
+  days_of_week: number[] | null;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+  override_loop?: Loop | null;
 };
 
 export type ActivityLog = {
@@ -174,6 +218,7 @@ type Tables = {
       timezone?: string;
       rotation?: PlayerRotation;
       loop_id?: string | null;
+      campaign_id?: string | null;
       pairing_code?: string | null;
       status?: PlayerStatus;
       last_seen_at?: string | null;
@@ -181,6 +226,111 @@ type Tables = {
       updated_at?: string;
     };
     Update: Partial<Player>;
+    Relationships: [];
+  };
+  campaigns: {
+    Row: Campaign;
+    Insert: {
+      id?: string;
+      clerk_org_id: string;
+      name: string;
+      created_at?: string;
+      updated_at?: string;
+    };
+    Update: Partial<Campaign>;
+    Relationships: [];
+  };
+  campaign_loops: {
+    Row: {
+      id: string;
+      clerk_org_id: string;
+      campaign_id: string;
+      loop_id: string;
+      position: number;
+      created_at: string;
+    };
+    Insert: {
+      id?: string;
+      clerk_org_id: string;
+      campaign_id: string;
+      loop_id: string;
+      position?: number;
+      created_at?: string;
+    };
+    Update: Partial<{
+      id: string;
+      clerk_org_id: string;
+      campaign_id: string;
+      loop_id: string;
+      position: number;
+      created_at: string;
+    }>;
+    Relationships: [];
+  };
+  campaign_players: {
+    Row: {
+      id: string;
+      clerk_org_id: string;
+      campaign_id: string;
+      player_id: string;
+      created_at: string;
+    };
+    Insert: {
+      id?: string;
+      clerk_org_id: string;
+      campaign_id: string;
+      player_id: string;
+      created_at?: string;
+    };
+    Update: Partial<{
+      id: string;
+      clerk_org_id: string;
+      campaign_id: string;
+      player_id: string;
+      created_at: string;
+    }>;
+    Relationships: [];
+  };
+  campaign_exceptions: {
+    Row: {
+      id: string;
+      clerk_org_id: string;
+      campaign_id: string;
+      name: string;
+      override_loop_id: string;
+      start_date: string | null;
+      end_date: string | null;
+      days_of_week: number[] | null;
+      enabled: boolean;
+      created_at: string;
+      updated_at: string;
+    };
+    Insert: {
+      id?: string;
+      clerk_org_id: string;
+      campaign_id: string;
+      name?: string;
+      override_loop_id: string;
+      start_date?: string | null;
+      end_date?: string | null;
+      days_of_week?: number[] | null;
+      enabled?: boolean;
+      created_at?: string;
+      updated_at?: string;
+    };
+    Update: Partial<{
+      id: string;
+      clerk_org_id: string;
+      campaign_id: string;
+      name: string;
+      override_loop_id: string;
+      start_date: string | null;
+      end_date: string | null;
+      days_of_week: number[] | null;
+      enabled: boolean;
+      created_at: string;
+      updated_at: string;
+    }>;
     Relationships: [];
   };
   activity_logs: {

@@ -204,6 +204,34 @@ export function PlayerRuntime({ playerId }: { playerId: string }) {
           void fetchPlayback();
         },
       )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "campaigns" },
+        () => {
+          void fetchPlayback();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "campaign_loops" },
+        () => {
+          void fetchPlayback();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "campaign_exceptions" },
+        () => {
+          void fetchPlayback();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "campaign_players" },
+        () => {
+          void fetchPlayback();
+        },
+      )
       .subscribe((status) => {
         if (cancelled) return;
         if (status === "SUBSCRIBED") {
@@ -294,6 +322,23 @@ export function PlayerRuntime({ playerId }: { playerId: string }) {
     );
   }
 
+  if (payload.state === "paired_no_campaign") {
+    return (
+      <div
+        className="relative flex min-h-screen items-center justify-center overflow-hidden bg-black text-white"
+        style={rotationStyle(payload.player.rotation)}
+      >
+        <div className="text-center">
+          <p className="text-lg font-medium">{payload.player.name}</p>
+          <p className="mt-2 text-zinc-400">
+            Paired — assign a campaign in the dashboard to start playback.
+          </p>
+          <StatusBits offline={offline} realtimeOk={realtimeOk} />
+        </div>
+      </div>
+    );
+  }
+
   if (payload.state === "paired_no_loop" || payload.items.length === 0) {
     return (
       <div
@@ -303,7 +348,9 @@ export function PlayerRuntime({ playerId }: { playerId: string }) {
         <div className="text-center">
           <p className="text-lg font-medium">{payload.player.name}</p>
           <p className="mt-2 text-zinc-400">
-            Paired — assign a loop in the dashboard to start playback.
+            {payload.campaign
+              ? `Campaign "${payload.campaign.name}" has no loops yet.`
+              : "Paired — assign campaign loops in the dashboard."}
           </p>
           <StatusBits offline={offline} realtimeOk={realtimeOk} />
         </div>
@@ -312,6 +359,9 @@ export function PlayerRuntime({ playerId }: { playerId: string }) {
   }
 
   const current = payload.items[index] ?? payload.items[0];
+  const exceptionLabel = payload.exception
+    ? `Exception: ${payload.exception.name}`
+    : "No Exception";
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-black text-white">
@@ -320,6 +370,9 @@ export function PlayerRuntime({ playerId }: { playerId: string }) {
         style={rotationStyle(payload.player.rotation)}
       >
         <MediaSlide key={`${current.id}-${index}`} item={current} />
+      </div>
+      <div className="pointer-events-none absolute left-3 top-3 rounded bg-black/50 px-2 py-1 text-[10px] text-zinc-300">
+        {payload.campaign?.name ?? "Campaign"} · {exceptionLabel}
       </div>
       <StatusBits offline={offline} realtimeOk={realtimeOk} compact />
     </div>

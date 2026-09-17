@@ -3,6 +3,7 @@ import { z } from "zod";
 import { isOrgContext, requireOrg } from "@/lib/clerk";
 import { createServiceClient } from "@/lib/supabase";
 import { logActivity } from "@/lib/activity";
+import { assignPlayerCampaign } from "@/lib/campaign-assign";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -11,8 +12,10 @@ const updateSchema = z.object({
   description: z.string().trim().max(500).nullable().optional(),
   location: z.string().trim().max(200).nullable().optional(),
   timezone: z.string().trim().min(1).max(80).optional(),
-  rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional(),
-  loopId: z.string().uuid().nullable().optional(),
+  rotation: z
+    .union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)])
+    .optional(),
+  campaignId: z.string().uuid().nullable().optional(),
 });
 
 export async function GET(_request: Request, { params }: Params) {
@@ -43,39 +46,56 @@ export async function PATCH(request: Request, { params }: Params) {
   const body = updateSchema.parse(await request.json());
   const supabase = createServiceClient();
 
-  if (body.loopId) {
-    const { data: loop } = await supabase
-      .from("loops")
+  if (body.campaignId) {
+    const { data: campaign } = await supabase
+      .from("campaigns")
       .select("id")
       .eq("clerk_org_id", ctx.orgId)
-      .eq("id", body.loopId)
-      .single();
-    if (!loop) {
-      return NextResponse.json({ error: "Loop not found" }, { status: 404 });
+      .eq("id", body.campaignId)
+      .maybeSingle();
+    if (!campaign) {
+      return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
     }
   }
 
-  const { data, error } = await supabase
-    .from("players")
-    .update({
-      ...(body.name !== undefined ? { name: body.name } : {}),
-      ...(body.description !== undefined
-        ? { description: body.description }
-        : {}),
-      ...(body.location !== undefined ? { location: body.location } : {}),
-      ...(body.timezone !== undefined ? { timezone: body.timezone } : {}),
-      ...(body.rotation !== undefined ? { rotation: body.rotation } : {}),
-      ...(body.loopId !== undefined ? { loop_id: body.loopId } : {}),
-    })
-    .eq("clerk_org_id", ctx.orgId)
-    .eq("id", id)
-    .select("*")
-    .single();
+  let data;
+  try {
+    if (body.campaignId !== undefined) {
+      data = await assignPlayerCampaign(
+        supabase,
+        ctx.orgId,
+        id,
+        body.campaignId,
+      );
+    }
 
-  if (error || !data) {
+    const { data: updated, error } = await supabase
+      .from("players")
+      .update({
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.description !== undefined
+          ? { description: body.description }
+          : {}),
+        ...(body.location !== undefined ? { location: body.location } : {}),
+        ...(body.timezone !== undefined ? { timezone: body.timezone } : {}),
+        ...(body.rotation !== undefined ? { rotation: body.rotation } : {}),
+      })
+      .eq("clerk_org_id", ctx.orgId)
+      .eq("id", id)
+      .select("*")
+      .single();
+
+    if (error || !updated) {
+      return NextResponse.json(
+        { error: error?.message ?? "Player not found" },
+        { status: 404 },
+      );
+    }
+    data = updated;
+  } catch (e) {
     return NextResponse.json(
-      { error: error?.message ?? "Player not found" },
-      { status: 404 },
+      { error: e instanceof Error ? e.message : "Update failed" },
+      { status: 500 },
     );
   }
 
