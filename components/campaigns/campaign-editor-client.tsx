@@ -100,16 +100,37 @@ export function CampaignEditorClient({ campaignId }: { campaignId: string }) {
 
   async function saveName() {
     if (!name.trim()) return;
+    const res = await fetch(`/api/campaigns/${campaignId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name.trim() }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error ?? "Could not save name");
+    setCampaign(json.campaign);
+  }
+
+  async function savePlayers() {
+    const res = await fetch(`/api/campaigns/${campaignId}/players`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ playerIds: selectedPlayerIds }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error ?? "Could not assign players");
+  }
+
+  async function saveAll() {
+    if (!name.trim()) {
+      setError("Campaign name is required");
+      return;
+    }
     setSaving(true);
+    setError(null);
     try {
-      const res = await fetch(`/api/campaigns/${campaignId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim() }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
-      setCampaign(json.campaign);
+      await saveName();
+      await savePlayers();
+      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
@@ -162,20 +183,6 @@ export function CampaignEditorClient({ campaignId }: { campaignId: string }) {
     const json = await res.json();
     if (!res.ok) {
       setError(json.error ?? "Could not reorder");
-      return;
-    }
-    await load();
-  }
-
-  async function savePlayers() {
-    const res = await fetch(`/api/campaigns/${campaignId}/players`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ playerIds: selectedPlayerIds }),
-    });
-    const json = await res.json();
-    if (!res.ok) {
-      setError(json.error ?? "Could not assign players");
       return;
     }
     await load();
@@ -323,14 +330,11 @@ export function CampaignEditorClient({ campaignId }: { campaignId: string }) {
 
       <section className="mb-6 max-w-xl rounded-lg border border-zinc-200 p-4">
         <h2 className="text-sm font-semibold">Details</h2>
-        <div className="mt-3 flex gap-2">
+        <div className="mt-3">
+          <label className="mb-1 block text-xs font-medium text-zinc-500">
+            Name
+          </label>
           <Input value={name} onChange={(e) => setName(e.target.value)} />
-          <Button
-            onClick={() => void saveName()}
-            disabled={saving || name.trim() === campaign?.name}
-          >
-            Save
-          </Button>
         </div>
       </section>
 
@@ -444,11 +448,7 @@ export function CampaignEditorClient({ campaignId }: { campaignId: string }) {
           <p className="mt-3 text-sm text-zinc-500">
             No paired players yet. Pair a device first.
           </p>
-        ) : (
-          <div className="mt-3">
-            <Button onClick={() => void savePlayers()}>Save player assignments</Button>
-          </div>
-        )}
+        ) : null}
         {campaignPlayers.length > 0 ? (
           <p className="mt-2 text-xs text-zinc-500">
             Currently assigned:{" "}
@@ -602,6 +602,16 @@ export function CampaignEditorClient({ campaignId }: { campaignId: string }) {
           </ul>
         )}
       </section>
+
+      <div className="sticky bottom-0 z-10 -mx-6 mt-8 flex justify-end border-t border-zinc-200 bg-white/95 px-6 py-4 backdrop-blur">
+        <Button
+          className="min-w-28"
+          onClick={() => void saveAll()}
+          disabled={saving || !name.trim()}
+        >
+          {saving ? "Saving…" : "Save"}
+        </Button>
+      </div>
     </div>
   );
 }
