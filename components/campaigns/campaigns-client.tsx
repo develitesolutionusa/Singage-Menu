@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Pencil, Plus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import {
   Button,
   ConfirmDialog,
@@ -76,9 +77,13 @@ export function CampaignsClient() {
       setName("");
       setMainLoopId("");
       setShowCreate(false);
+      toast.success("Campaign created");
       window.location.href = `/campaigns/${json.campaign.id}`;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not create campaign");
+      const message =
+        e instanceof Error ? e.message : "Could not create campaign";
+      setError(message);
+      toast.error(message);
     } finally {
       setCreating(false);
     }
@@ -98,10 +103,13 @@ export function CampaignsClient() {
       });
       const json = await res.json();
       if (!res.ok) {
-        setError(json.error ?? "Delete failed");
+        const message = json.error ?? "Delete failed";
+        setError(message);
+        toast.error(message);
         return;
       }
       setPendingDeleteId(null);
+      toast.success("Campaign deleted");
       await load();
     } finally {
       setDeleting(false);

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Plus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import {
   Button,
   ConfirmDialog,
@@ -122,7 +123,9 @@ export function CampaignEditorClient({ campaignId }: { campaignId: string }) {
 
   async function saveAll() {
     if (!name.trim()) {
-      setError("Campaign name is required");
+      const message = "Campaign name is required";
+      setError(message);
+      toast.error(message);
       return;
     }
     setSaving(true);
@@ -130,9 +133,12 @@ export function CampaignEditorClient({ campaignId }: { campaignId: string }) {
     try {
       await saveName();
       await savePlayers();
+      toast.success("Campaign saved");
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
+      const message = e instanceof Error ? e.message : "Save failed";
+      setError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -147,10 +153,13 @@ export function CampaignEditorClient({ campaignId }: { campaignId: string }) {
     });
     const json = await res.json();
     if (!res.ok) {
-      setError(json.error ?? "Could not add loop");
+      const message = json.error ?? "Could not add loop";
+      setError(message);
+      toast.error(message);
       return;
     }
     setAddLoopId("");
+    toast.success("Loop added to campaign");
     await load();
   }
 
@@ -162,9 +171,12 @@ export function CampaignEditorClient({ campaignId }: { campaignId: string }) {
     });
     const json = await res.json();
     if (!res.ok) {
-      setError(json.error ?? "Could not remove loop");
+      const message = json.error ?? "Could not remove loop";
+      setError(message);
+      toast.error(message);
       return;
     }
+    toast.success("Loop removed from campaign");
     await load();
   }
 
@@ -182,9 +194,12 @@ export function CampaignEditorClient({ campaignId }: { campaignId: string }) {
     });
     const json = await res.json();
     if (!res.ok) {
-      setError(json.error ?? "Could not reorder");
+      const message = json.error ?? "Could not reorder";
+      setError(message);
+      toast.error(message);
       return;
     }
+    toast.success("Loop order updated");
     await load();
   }
 
@@ -196,7 +211,9 @@ export function CampaignEditorClient({ campaignId }: { campaignId: string }) {
 
   async function addException() {
     if (!exLoopId) {
-      setError("Pick an override loop for the exception");
+      const message = "Pick an override loop for the exception";
+      setError(message);
+      toast.error(message);
       return;
     }
     const res = await fetch(`/api/campaigns/${campaignId}/exceptions`, {
@@ -213,7 +230,9 @@ export function CampaignEditorClient({ campaignId }: { campaignId: string }) {
     });
     const json = await res.json();
     if (!res.ok) {
-      setError(json.error ?? "Could not create exception");
+      const message = json.error ?? "Could not create exception";
+      setError(message);
+      toast.error(message);
       return;
     }
     setExName("Holiday Override");
@@ -222,6 +241,7 @@ export function CampaignEditorClient({ campaignId }: { campaignId: string }) {
     setExEnd("");
     setExDays([]);
     setExEnabled(true);
+    toast.success("Exception added");
     await load();
   }
 
@@ -236,9 +256,12 @@ export function CampaignEditorClient({ campaignId }: { campaignId: string }) {
     });
     const json = await res.json();
     if (!res.ok) {
-      setError(json.error ?? "Could not update exception");
+      const message = json.error ?? "Could not update exception";
+      setError(message);
+      toast.error(message);
       return;
     }
+    toast.success(ex.enabled ? "Exception disabled" : "Exception enabled");
     await load();
   }
 
@@ -263,10 +286,13 @@ export function CampaignEditorClient({ campaignId }: { campaignId: string }) {
         });
         const json = await res.json();
         if (!res.ok) {
-          setError(json.error ?? "Could not delete exception");
+          const message = json.error ?? "Could not delete exception";
+          setError(message);
+          toast.error(message);
           return;
         }
         setPendingDelete(null);
+        toast.success("Exception deleted");
         await load();
       } else {
         const res = await fetch(`/api/campaigns/${campaignId}`, {
@@ -274,9 +300,12 @@ export function CampaignEditorClient({ campaignId }: { campaignId: string }) {
         });
         const json = await res.json();
         if (!res.ok) {
-          setError(json.error ?? "Could not delete");
+          const message = json.error ?? "Could not delete";
+          setError(message);
+          toast.error(message);
           return;
         }
+        toast.success("Campaign deleted");
         window.location.href = "/campaigns";
       }
     } finally {

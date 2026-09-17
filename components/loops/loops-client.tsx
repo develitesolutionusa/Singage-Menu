@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ListPlus, Pencil, Plus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import {
   Button,
   ConfirmDialog,
@@ -75,9 +76,12 @@ export function LoopsClient() {
       if (!res.ok) throw new Error(json.error);
       setName("");
       setShowCreate(false);
+      toast.success("Loop created");
       window.location.href = `/loops/${json.loop.id}`;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not create loop");
+      const message = e instanceof Error ? e.message : "Could not create loop";
+      setError(message);
+      toast.error(message);
     } finally {
       setCreating(false);
     }
@@ -107,9 +111,12 @@ export function LoopsClient() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       setEdit(null);
+      toast.success("Loop updated");
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not update loop");
+      const message = e instanceof Error ? e.message : "Could not update loop";
+      setError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -129,10 +136,13 @@ export function LoopsClient() {
       });
       const json = await res.json();
       if (!res.ok) {
-        setError(json.error ?? "Delete failed");
+        const message = json.error ?? "Delete failed";
+        setError(message);
+        toast.error(message);
         return;
       }
       setPendingDeleteId(null);
+      toast.success("Loop deleted");
       await load();
     } finally {
       setDeleting(false);

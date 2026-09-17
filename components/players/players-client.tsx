@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Plus, Pencil, Trash2, ExternalLink } from "lucide-react";
+import { toast } from "sonner";
 import {
   Button,
   ConfirmDialog,
@@ -98,9 +99,12 @@ export function PlayersClient() {
       setPairCode("");
       setPairName("");
       setShowPair(false);
+      toast.success("Player paired");
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Pairing failed");
+      const message = e instanceof Error ? e.message : "Pairing failed";
+      setError(message);
+      toast.error(message);
     } finally {
       setPairing(false);
     }
@@ -138,9 +142,12 @@ export function PlayersClient() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       setEdit(null);
+      toast.success("Player updated");
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
+      const message = e instanceof Error ? e.message : "Save failed";
+      setError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -160,10 +167,13 @@ export function PlayersClient() {
       });
       const json = await res.json();
       if (!res.ok) {
-        setError(json.error ?? "Delete failed");
+        const message = json.error ?? "Delete failed";
+        setError(message);
+        toast.error(message);
         return;
       }
       setPendingDeleteId(null);
+      toast.success("Player deleted");
       await load();
     } finally {
       setDeleting(false);

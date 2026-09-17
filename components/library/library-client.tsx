@@ -10,6 +10,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button, ConfirmDialog, EmptyState, Input, PageHeader, Select } from "@/components/ui";
 import { cn, formatBytes, formatDuration } from "@/lib/utils";
 import type { LibraryFolder, LibraryItem } from "@/types/db";
@@ -127,9 +128,14 @@ export function LibraryClient() {
       const res = await fetch("/api/library", { method: "POST", body: form });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Upload failed");
+      toast.success(
+        files.length === 1 ? "Media uploaded" : `${files.length} files uploaded`,
+      );
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Upload failed");
+      const message = e instanceof Error ? e.message : "Upload failed";
+      setError(message);
+      toast.error(message);
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -154,11 +160,14 @@ export function LibraryClient() {
       });
       const json = await res.json();
       if (!res.ok) {
-        setError(json.error ?? "Could not create folder");
+        const message = json.error ?? "Could not create folder";
+        setError(message);
+        toast.error(message);
         return;
       }
       setNewFolderName("");
       setShowNewFolder(false);
+      toast.success("Folder created");
       await load();
     } finally {
       creatingFolderRef.current = false;
@@ -182,7 +191,9 @@ export function LibraryClient() {
       });
       const json = await res.json();
       if (!res.ok) {
-        setError(json.error ?? "Could not rename folder");
+        const message = json.error ?? "Could not rename folder";
+        setError(message);
+        toast.error(message);
         return;
       }
       setPath((prev) =>
@@ -191,6 +202,7 @@ export function LibraryClient() {
         ),
       );
       setRenaming(null);
+      toast.success("Folder renamed");
       await load();
     } finally {
       savingRenameRef.current = false;
@@ -219,7 +231,9 @@ export function LibraryClient() {
         });
         const json = await res.json();
         if (!res.ok) {
-          setError(json.error ?? "Could not delete folder");
+          const message = json.error ?? "Could not delete folder";
+          setError(message);
+          toast.error(message);
           return;
         }
         if (path.some((p) => p.id === pendingDelete.id)) {
@@ -228,6 +242,7 @@ export function LibraryClient() {
             return idx >= 0 ? prev.slice(0, idx) : prev;
           });
         }
+        toast.success("Folder deleted");
       } else {
         const res = await fetch("/api/library", {
           method: "DELETE",
@@ -236,9 +251,12 @@ export function LibraryClient() {
         });
         const json = await res.json();
         if (!res.ok) {
-          setError(json.error ?? "Delete failed");
+          const message = json.error ?? "Delete failed";
+          setError(message);
+          toast.error(message);
           return;
         }
+        toast.success("Item deleted");
       }
       setPendingDelete(null);
       await load();
@@ -256,9 +274,12 @@ export function LibraryClient() {
     });
     const json = await res.json();
     if (!res.ok) {
-      setError(json.error ?? "Could not move item");
+      const message = json.error ?? "Could not move item";
+      setError(message);
+      toast.error(message);
       return;
     }
+    toast.success("Item moved");
     await load();
   }
 

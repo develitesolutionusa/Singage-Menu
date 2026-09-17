@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   DndContext,
@@ -17,17 +17,46 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Plus, Trash2 } from "lucide-react";
-import { Button, ConfirmDialog, EmptyState, Input, PageHeader, Select } from "@/components/ui";
-import { formatDuration } from "@/lib/utils";
-import type { LibraryItem, Loop, LoopItem, Orientation } from "@/types/db";
+import {
+  ChevronLeft,
+  Folder,
+  GripVertical,
+  Pause,
+  Play,
+  SkipForward,
+  Trash2,
+} from "lucide-react";
+import { toast } from "sonner";
+import {
+  Button,
+  ConfirmDialog,
+  EmptyState,
+  Input,
+  Select,
+} from "@/components/ui";
+import { cn, formatBytes, formatDuration } from "@/lib/utils";
+import type {
+  LibraryFolder,
+  LibraryItem,
+  Loop,
+  LoopItem,
+  Orientation,
+} from "@/types/db";
 
-function SortableRow({
+type PathSegment = { id: string; name: string };
+
+function SortableTimelineRow({
   item,
+  index,
+  selected,
+  onSelect,
   onDurationChange,
   onRemove,
 }: {
   item: LoopItem;
+  index: number;
+  selected: boolean;
+  onSelect: () => void;
   onDurationChange: (id: string, value: number) => void;
   onRemove: (id: string) => void;
 }) {
@@ -39,34 +68,61 @@ function SortableRow({
     transition,
   };
 
+  const media = item.library_item;
+
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-3 rounded-md border border-zinc-200 bg-white px-3 py-2"
+      onClick={onSelect}
+      className={cn(
+        "flex cursor-pointer items-center gap-3 rounded-md border bg-white px-3 py-2",
+        selected
+          ? "border-teal-600 ring-1 ring-teal-600"
+          : "border-zinc-200 hover:border-zinc-300",
+      )}
     >
       <button
         type="button"
         className="cursor-grab text-zinc-400 active:cursor-grabbing"
         {...attributes}
         {...listeners}
+        onClick={(e) => e.stopPropagation()}
       >
         <GripVertical className="h-4 w-4" />
       </button>
+      <span className="w-6 shrink-0 text-xs text-zinc-400">#{index + 1}</span>
+      <div className="h-9 w-14 shrink-0 overflow-hidden rounded bg-zinc-100">
+        {media?.file_type === "image" && media.public_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={media.public_url}
+            alt=""
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center text-[10px] text-zinc-400">
+            Video
+          </div>
+        )}
+      </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">
-          {item.library_item?.name ?? "Asset"}
+          {media?.name ?? "Asset"}
         </p>
-        <p className="text-xs text-zinc-500 capitalize">
-          {item.library_item?.file_type ?? "media"}
+        <p className="text-xs capitalize text-zinc-500">
+          {media?.file_type ?? "media"}
         </p>
       </div>
-      <div className="flex items-center gap-2">
+      <div
+        className="flex items-center gap-1"
+        onClick={(e) => e.stopPropagation()}
+      >
         <Input
           type="number"
           min={1}
           step={1}
-          className="w-20"
+          className="w-16"
           value={item.duration_seconds}
           onChange={(e) =>
             onDurationChange(item.id, Number(e.target.value) || 1)
@@ -76,8 +132,13 @@ function SortableRow({
       </div>
       <button
         type="button"
-        onClick={() => onRemove(item.id)}
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove(item.id);
+        }}
         className="text-zinc-400 hover:text-red-600"
+        aria-label="Remove from loop"
+        title="Remove"
       >
         <Trash2 className="h-4 w-4" />
       </button>
@@ -89,19 +150,38 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
   const [loop, setLoop] = useState<Loop | null>(null);
   const [items, setItems] = useState<LoopItem[]>([]);
   const [library, setLibrary] = useState<LibraryItem[]>([]);
-  const [folderNames, setFolderNames] = useState<Record<string, string>>({});
+  const [folders, setFolders] = useState<LibraryFolder[]>([]);
+  const [path, setPath] = useState<PathSegment[]>([]);
+  const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [savingMeta, setSavingMeta] = useState(false);
-  const [showPicker, setShowPicker] = useState(false);
   const [editName, setEditName] = useState("");
   const [editOrientation, setEditOrientation] =
     useState<Orientation>("landscape");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [baseline, setBaseline] = useState<{
+    name: string;
+    orientation: Orientation;
+    itemsKey: string;
+  } | null>(null);
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const folderId = path.length ? path[path.length - 1].id : null;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
+
+  const itemsKey = useMemo(
+    () =>
+      items
+        .map((i) => `${i.id}:${i.position}:${i.duration_seconds}`)
+        .join("|"),
+    [items],
   );
 
   const load = useCallback(async () => {
@@ -118,16 +198,30 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
       if (!loopRes.ok) throw new Error(loopJson.error);
       if (!libRes.ok) throw new Error(libJson.error);
       if (!foldersRes.ok) throw new Error(foldersJson.error);
+
+      const nextItems: LoopItem[] = loopJson.items ?? [];
+      const nextName = loopJson.loop?.name ?? "";
+      const nextOrientation: Orientation =
+        loopJson.loop?.orientation ?? "landscape";
+
       setLoop(loopJson.loop);
-      setEditName(loopJson.loop?.name ?? "");
-      setEditOrientation(loopJson.loop?.orientation ?? "landscape");
-      setItems(loopJson.items ?? []);
+      setEditName(nextName);
+      setEditOrientation(nextOrientation);
+      setItems(nextItems);
       setLibrary(libJson.items ?? []);
-      const names: Record<string, string> = {};
-      for (const folder of foldersJson.folders ?? []) {
-        names[folder.id] = folder.name;
-      }
-      setFolderNames(names);
+      setFolders(foldersJson.folders ?? []);
+      setBaseline({
+        name: nextName,
+        orientation: nextOrientation,
+        itemsKey: nextItems
+          .map((i) => `${i.id}:${i.position}:${i.duration_seconds}`)
+          .join("|"),
+      });
+      setDirty(false);
+      setSelectedId((prev) => {
+        if (prev && nextItems.some((i) => i.id === prev)) return prev;
+        return nextItems[0]?.id ?? null;
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load loop");
     }
@@ -137,41 +231,91 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!baseline) return;
+    setDirty(
+      editName.trim() !== baseline.name ||
+        editOrientation !== baseline.orientation ||
+        itemsKey !== baseline.itemsKey,
+    );
+  }, [baseline, editName, editOrientation, itemsKey]);
+
   const totalSeconds = useMemo(
-    () => items.reduce((sum, item) => sum + Number(item.duration_seconds || 0), 0),
+    () =>
+      items.reduce((sum, item) => sum + Number(item.duration_seconds || 0), 0),
     [items],
   );
 
-  const availableLibrary = useMemo(() => {
-    const used = new Set(
-      items
-        .map((item) => item.library_item_id)
-        .filter((id): id is string => Boolean(id)),
-    );
-    return library.filter((asset) => !used.has(asset.id));
-  }, [library, items]);
+  const usedLibraryIds = useMemo(
+    () =>
+      new Set(
+        items
+          .map((item) => item.library_item_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    [items],
+  );
 
-  async function persistOrder(next: LoopItem[]) {
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/loops/${loopId}/items`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: next.map((item, index) => ({
-            id: item.id,
-            position: index,
-            durationSeconds: Number(item.duration_seconds),
-          })),
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save");
-    } finally {
-      setSaving(false);
+  const childFolders = useMemo(
+    () =>
+      folders
+        .filter((f) => f.parent_id === folderId)
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [folders, folderId],
+  );
+
+  const paneAssets = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return library
+      .filter((asset) => !usedLibraryIds.has(asset.id))
+      .filter((asset) =>
+        q
+          ? asset.name.toLowerCase().includes(q)
+          : (asset.folder_id ?? null) === folderId,
+      )
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [library, usedLibraryIds, folderId, search]);
+
+  const selectedItem = useMemo(
+    () => items.find((i) => i.id === selectedId) ?? null,
+    [items, selectedId],
+  );
+
+  const selectedIndex = useMemo(
+    () => items.findIndex((i) => i.id === selectedId),
+    [items, selectedId],
+  );
+
+  useEffect(() => {
+    if (!playing || !selectedItem) return;
+    const media = selectedItem.library_item;
+    if (media?.file_type === "video") {
+      void videoRef.current?.play().catch(() => undefined);
+      return;
     }
+    const ms = Math.max(1, Number(selectedItem.duration_seconds) || 1) * 1000;
+    const timer = window.setTimeout(() => {
+      if (items.length === 0) {
+        setPlaying(false);
+        return;
+      }
+      const next = (selectedIndex + 1) % items.length;
+      setSelectedId(items[next].id);
+    }, ms);
+    return () => window.clearTimeout(timer);
+  }, [playing, selectedItem, selectedIndex, items]);
+
+  function openFolder(folder: LibraryFolder) {
+    setPath((prev) => [...prev, { id: folder.id, name: folder.name }]);
+    setSearch("");
+  }
+
+  function goBreadcrumb(index: number) {
+    if (index < 0) {
+      setPath([]);
+      return;
+    }
+    setPath((prev) => prev.slice(0, index + 1));
   }
 
   function onDragEnd(event: DragEndEvent) {
@@ -179,26 +323,24 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
     if (!over || active.id === over.id) return;
     const oldIndex = items.findIndex((i) => i.id === active.id);
     const newIndex = items.findIndex((i) => i.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
     const next = arrayMove(items, oldIndex, newIndex).map((item, index) => ({
       ...item,
       position: index,
     }));
     setItems(next);
-    void persistOrder(next);
   }
 
   function onDurationChange(id: string, value: number) {
-    const next = items.map((item) =>
-      item.id === id ? { ...item, duration_seconds: value } : item,
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === id ? { ...item, duration_seconds: value } : item,
+      ),
     );
-    setItems(next);
-  }
-
-  async function commitDurations() {
-    await persistOrder(items);
   }
 
   async function addAsset(libraryItemId: string) {
+    setError(null);
     const res = await fetch(`/api/loops/${loopId}/items`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -206,13 +348,18 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
     });
     const json = await res.json();
     if (!res.ok) {
-      setError(json.error ?? "Could not add asset");
+      const message = json.error ?? "Could not add asset";
+      setError(message);
+      toast.error(message);
       return;
     }
+    toast.success("Asset added to loop");
     await load();
+    if (json.item?.id) setSelectedId(json.item.id);
   }
 
   async function removeItem(itemId: string) {
+    setError(null);
     const res = await fetch(`/api/loops/${loopId}/items`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -220,21 +367,26 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
     });
     const json = await res.json();
     if (!res.ok) {
-      setError(json.error ?? "Could not remove item");
+      const message = json.error ?? "Could not remove item";
+      setError(message);
+      toast.error(message);
       return;
     }
+    toast.success("Item removed from loop");
     await load();
   }
 
-  async function saveLoopMeta() {
+  async function saveAll() {
     if (!editName.trim()) {
-      setError("Loop name is required");
+      const message = "Loop name is required";
+      setError(message);
+      toast.error(message);
       return;
     }
-    setSavingMeta(true);
+    setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/loops/${loopId}`, {
+      const metaRes = await fetch(`/api/loops/${loopId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -242,18 +394,33 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
           orientation: editOrientation,
         }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Could not update loop");
-      setLoop(json.loop);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not update loop");
-    } finally {
-      setSavingMeta(false);
-    }
-  }
+      const metaJson = await metaRes.json();
+      if (!metaRes.ok) throw new Error(metaJson.error ?? "Could not save loop");
 
-  async function deleteLoop() {
-    setConfirmDelete(true);
+      const itemsRes = await fetch(`/api/loops/${loopId}/items`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: items.map((item, index) => ({
+            id: item.id,
+            position: index,
+            durationSeconds: Number(item.duration_seconds),
+          })),
+        }),
+      });
+      const itemsJson = await itemsRes.json();
+      if (!itemsRes.ok) throw new Error(itemsJson.error ?? "Could not save items");
+
+      setLoop(metaJson.loop);
+      toast.success("Loop saved");
+      await load();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Save failed";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function confirmDeleteLoop() {
@@ -263,21 +430,39 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
       const res = await fetch(`/api/loops/${loopId}`, { method: "DELETE" });
       const json = await res.json();
       if (!res.ok) {
-        setError(json.error ?? "Could not delete loop");
+        const message = json.error ?? "Could not delete loop";
+        setError(message);
+        toast.error(message);
         return;
       }
+      toast.success("Loop deleted");
       window.location.href = "/loops";
     } finally {
       setDeleting(false);
     }
   }
 
-  const metaDirty =
-    !!loop &&
-    (editName.trim() !== loop.name || editOrientation !== loop.orientation);
+  function playPreview() {
+    if (items.length === 0) return;
+    if (!selectedId) setSelectedId(items[0].id);
+    setPlaying(true);
+  }
+
+  function pausePreview() {
+    setPlaying(false);
+    videoRef.current?.pause();
+  }
+
+  function nextPreview() {
+    if (items.length === 0) return;
+    const next = (Math.max(0, selectedIndex) + 1) % items.length;
+    setSelectedId(items[next].id);
+  }
+
+  const previewMedia = selectedItem?.library_item ?? null;
 
   return (
-    <div>
+    <div className="flex min-h-[calc(100vh-8rem)] flex-col">
       <ConfirmDialog
         open={confirmDelete}
         title="Delete this loop?"
@@ -288,65 +473,44 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
         }}
         onConfirm={() => void confirmDeleteLoop()}
       />
-      <PageHeader
-        title={loop?.name ?? "Loop Editor"}
-        description={
-          loop
-            ? `${loop.orientation} · Running time ${formatDuration(totalSeconds)}${saving ? " · Saving…" : ""}`
-            : "Loading…"
-        }
-        actions={
-          <>
-            <Link href="/loops">
-              <Button variant="secondary">Back to loops</Button>
-            </Link>
-            <Button variant="danger" onClick={() => void deleteLoop()}>
-              <Trash2 className="h-4 w-4" />
-              Delete
-            </Button>
-            <Button onClick={() => setShowPicker((v) => !v)}>
-              <Plus className="h-4 w-4" />
-              Add from Library
-            </Button>
-          </>
-        }
-      />
 
-      {loop ? (
-        <div className="mb-6 grid max-w-2xl gap-3 rounded-lg border border-zinc-200 p-4 sm:grid-cols-[1fr_auto_auto]">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-zinc-500">
-              Name
-            </label>
-            <Input
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-zinc-500">
-              Orientation
-            </label>
-            <Select
-              value={editOrientation}
-              onChange={(e) =>
-                setEditOrientation(e.target.value as Orientation)
-              }
-            >
-              <option value="landscape">Landscape</option>
-              <option value="portrait">Portrait</option>
-            </Select>
-          </div>
-          <div className="flex items-end">
-            <Button
-              onClick={() => void saveLoopMeta()}
-              disabled={!metaDirty || savingMeta}
-            >
-              {savingMeta ? "Saving…" : "Save details"}
-            </Button>
-          </div>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <Link
+          href="/loops"
+          className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-800"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Back
+        </Link>
+        <Input
+          className="max-w-xs text-base font-semibold"
+          value={editName}
+          onChange={(e) => setEditName(e.target.value)}
+          placeholder="Loop name"
+        />
+        <Select
+          value={editOrientation}
+          onChange={(e) =>
+            setEditOrientation(e.target.value as Orientation)
+          }
+        >
+          <option value="landscape">Landscape</option>
+          <option value="portrait">Portrait</option>
+        </Select>
+        <span className="text-sm text-zinc-500">
+          Running time {formatDuration(totalSeconds)} · {items.length} item
+          {items.length === 1 ? "" : "s"}
+        </span>
+        <div className="ml-auto">
+          <Button
+            variant="danger"
+            onClick={() => setConfirmDelete(true)}
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete
+          </Button>
         </div>
-      ) : null}
+      </div>
 
       {error ? (
         <p className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -354,85 +518,248 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
         </p>
       ) : null}
 
-      {showPicker ? (
-        <div className="mb-6 max-h-64 overflow-auto rounded-lg border border-zinc-200">
-          {availableLibrary.length === 0 ? (
-            <p className="p-4 text-sm text-zinc-500">
-              {library.length === 0
-                ? "No library items yet. Upload media first."
-                : "All library items are already in this loop."}
-            </p>
-          ) : (
-            <ul className="divide-y divide-zinc-100">
-              {availableLibrary.map((asset) => (
-                <li
-                  key={asset.id}
-                  className="flex items-center justify-between gap-3 px-4 py-2"
+      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[240px_minmax(0,1fr)_280px]">
+        {/* Library pane */}
+        <section className="flex min-h-[320px] flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white">
+          <div className="border-b border-zinc-200 px-3 py-2">
+            <p className="text-sm font-semibold">Library</p>
+          </div>
+          <div className="space-y-2 border-b border-zinc-100 p-3">
+            <Input
+              placeholder="Search library…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {!search ? (
+              <nav className="flex flex-wrap items-center gap-1 text-xs">
+                <button
+                  type="button"
+                  className={cn(
+                    "rounded px-1.5 py-0.5",
+                    path.length === 0
+                      ? "font-medium text-zinc-900"
+                      : "text-teal-700 hover:underline",
+                  )}
+                  onClick={() => goBreadcrumb(-1)}
                 >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{asset.name}</p>
-                    <p className="text-xs capitalize text-zinc-500">
-                      {asset.file_type}
-                      {" · "}
-                      {asset.folder_id
-                        ? (folderNames[asset.folder_id] ?? "Folder")
-                        : "Root"}
-                    </p>
-                  </div>
-                  <Button
-                    variant="secondary"
-                    onClick={() => void addAsset(asset.id)}
+                  Root
+                </button>
+                {path.map((seg, index) => (
+                  <span key={seg.id} className="flex items-center gap-1">
+                    <span className="text-zinc-300">/</span>
+                    <button
+                      type="button"
+                      className={cn(
+                        "rounded px-1.5 py-0.5",
+                        index === path.length - 1
+                          ? "font-medium text-zinc-900"
+                          : "text-teal-700 hover:underline",
+                      )}
+                      onClick={() => goBreadcrumb(index)}
+                    >
+                      {seg.name}
+                    </button>
+                  </span>
+                ))}
+              </nav>
+            ) : null}
+          </div>
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+            {!search
+              ? childFolders.map((folder) => (
+                  <button
+                    key={folder.id}
+                    type="button"
+                    onClick={() => openFolder(folder)}
+                    className="flex w-full items-center gap-2 rounded-md border border-zinc-200 px-2 py-2 text-left text-sm hover:bg-zinc-50"
                   >
-                    Add
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      ) : null}
+                    <Folder className="h-4 w-4 text-teal-700" />
+                    <span className="truncate font-medium">{folder.name}</span>
+                  </button>
+                ))
+              : null}
 
-      {items.length === 0 ? (
-        <EmptyState
-          title="This loop is empty"
-          description="Add assets from your library, then drag to reorder."
-          action={
-            <Button onClick={() => setShowPicker(true)}>
-              <Plus className="h-4 w-4" />
-              Add from Library
-            </Button>
-          }
-        />
-      ) : (
-        <>
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={onDragEnd}
-          >
-            <SortableContext
-              items={items.map((i) => i.id)}
-              strategy={verticalListSortingStrategy}
-            >
-              <div className="space-y-2">
-                {items.map((item) => (
-                  <SortableRow
-                    key={item.id}
-                    item={item}
-                    onDurationChange={onDurationChange}
-                    onRemove={(id) => void removeItem(id)}
-                  />
+            {paneAssets.length === 0 && childFolders.length === 0 ? (
+              <p className="py-6 text-center text-xs text-zinc-500">
+                {library.length === 0
+                  ? "No library items yet."
+                  : search
+                    ? "No matches."
+                    : "Nothing here — try another folder."}
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                {paneAssets.map((asset) => (
+                  <button
+                    key={asset.id}
+                    type="button"
+                    onClick={() => void addAsset(asset.id)}
+                    className="overflow-hidden rounded-md border border-zinc-200 text-left hover:border-teal-600"
+                    title="Add to loop"
+                  >
+                    <div className="aspect-video bg-zinc-100">
+                      {asset.file_type === "image" && asset.public_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={asset.public_url}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-[10px] text-zinc-400">
+                          Video
+                        </div>
+                      )}
+                    </div>
+                    <div className="space-y-0.5 p-1.5">
+                      <p className="truncate text-[11px] font-medium">
+                        {asset.name}
+                      </p>
+                      <p className="text-[10px] capitalize text-zinc-500">
+                        {asset.file_type} · {formatBytes(asset.size_bytes)}
+                      </p>
+                    </div>
+                  </button>
                 ))}
               </div>
-            </SortableContext>
-          </DndContext>
-          <div className="mt-4">
-            <Button variant="secondary" onClick={() => void commitDurations()}>
-              Save durations
-            </Button>
+            )}
           </div>
-        </>
-      )}
+        </section>
+
+        {/* Timeline pane */}
+        <section className="flex min-h-[320px] flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white">
+          <div className="border-b border-zinc-200 px-3 py-2">
+            <p className="text-sm font-semibold">Timeline</p>
+            <p className="text-xs text-zinc-500">
+              Drag to reorder · click to preview · edit duration
+            </p>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-3">
+            {items.length === 0 ? (
+              <EmptyState
+                title="This loop is empty"
+                description="Click media in the Library pane to add it here."
+              />
+            ) : (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={onDragEnd}
+              >
+                <SortableContext
+                  items={items.map((i) => i.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="space-y-2">
+                    {items.map((item, index) => (
+                      <SortableTimelineRow
+                        key={item.id}
+                        item={item}
+                        index={index}
+                        selected={item.id === selectedId}
+                        onSelect={() => {
+                          setSelectedId(item.id);
+                          setPlaying(false);
+                        }}
+                        onDurationChange={onDurationChange}
+                        onRemove={(id) => void removeItem(id)}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            )}
+          </div>
+        </section>
+
+        {/* Preview pane */}
+        <section className="flex min-h-[320px] flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white">
+          <div className="border-b border-zinc-200 px-3 py-2">
+            <p className="text-sm font-semibold">Preview</p>
+          </div>
+          <div className="flex flex-1 flex-col gap-3 p-3">
+            <div
+              className={cn(
+                "relative mx-auto w-full overflow-hidden rounded-md bg-zinc-900",
+                editOrientation === "portrait"
+                  ? "aspect-[9/16] max-w-[180px]"
+                  : "aspect-video",
+              )}
+            >
+              {previewMedia?.file_type === "image" && previewMedia.public_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={previewMedia.public_url}
+                  alt={previewMedia.name}
+                  className="h-full w-full object-contain"
+                />
+              ) : previewMedia?.file_type === "video" &&
+                previewMedia.public_url ? (
+                <video
+                  ref={videoRef}
+                  key={previewMedia.id}
+                  src={previewMedia.public_url}
+                  className="h-full w-full object-contain"
+                  muted
+                  playsInline
+                  onEnded={nextPreview}
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center text-xs text-zinc-400">
+                  Select an item
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-center gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={playPreview}
+                disabled={items.length === 0}
+                aria-label="Play"
+              >
+                <Play className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={pausePreview}
+                disabled={!playing}
+                aria-label="Pause"
+              >
+                <Pause className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={nextPreview}
+                disabled={items.length < 2}
+                aria-label="Next"
+              >
+                <SkipForward className="h-4 w-4" />
+              </Button>
+            </div>
+            <p className="truncate text-center text-xs text-zinc-500">
+              {previewMedia
+                ? `Now: ${previewMedia.name}`
+                : "Nothing selected"}
+            </p>
+          </div>
+        </section>
+      </div>
+
+      <div className="sticky bottom-0 z-10 -mx-6 mt-6 flex items-center justify-between border-t border-zinc-200 bg-white/95 px-6 py-4 backdrop-blur">
+        <p className="text-sm text-zinc-500">
+          {dirty ? "Unsaved changes" : loop ? "All changes saved" : "Loading…"}
+        </p>
+        <Button
+          className="min-w-28"
+          onClick={() => void saveAll()}
+          disabled={saving || !editName.trim() || !dirty}
+        >
+          {saving ? "Saving…" : "Save"}
+        </Button>
+      </div>
     </div>
   );
 }
