@@ -25,8 +25,13 @@ export function createServiceClient() {
 
 /** Browser/anon client (RLS enforced via Clerk JWT when configured). */
 export function createBrowserClient() {
-  return createClient<Database>(
-    requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
-    requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
-  );
+  // NEXT_PUBLIC_* must be read as static property access so Next can inline them.
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) {
+    throw new Error(
+      "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    );
+  }
+  return createClient<Database>(url, anonKey);
 }

@@ -12,8 +12,12 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button, ConfirmDialog, EmptyState, Input, PageHeader, Select } from "@/components/ui";
+import { readApiJson } from "@/lib/api-json";
 import { cn, formatBytes, formatDuration } from "@/lib/utils";
 import type { LibraryFolder, LibraryItem } from "@/types/db";
+
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
 
 type SortKey = "name" | "size" | "duration" | "date";
 type ViewMode = "grid" | "list";
@@ -121,15 +125,109 @@ export function LibraryClient() {
     setUploading(true);
     setError(null);
     try {
-      const form = new FormData();
-      Array.from(files).forEach((file) => form.append("files", file));
+      const fileList = Array.from(files);
+      for (const file of fileList) {
+        const mime = file.type || "application/octet-stream";
+        const isImage = mime.startsWith("image/");
+        const isVideo = mime.startsWith("video/");
+        if (!isImage && !isVideo) {
+          throw new Error(`Unsupported file type: ${file.name}`);
+        }
+        const maxBytes = isImage ? MAX_IMAGE_BYTES : MAX_VIDEO_BYTES;
+        if (file.size > maxBytes) {
+          throw new Error(
+            `"${file.name}" is too large. Max ${isImage ? "20 MB" : "100 MB"} for ${isImage ? "images" : "videos"}.`,
+          );
+        }
+      }
+
       const target = intoFolderId !== undefined ? intoFolderId : folderId;
-      if (target) form.append("folderId", target);
-      const res = await fetch("/api/library", { method: "POST", body: form });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Upload failed");
+      const signRes = await fetch("/api/library/sign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          folderId: target,
+          files: fileList.map((file) => ({
+            name: file.name,
+            mimeType: file.type || "application/octet-stream",
+            sizeBytes: file.size,
+          })),
+        }),
+      });
+      const signJson = await readApiJson<{
+        uploads: Array<{
+          name: string;
+          mimeType: string;
+          sizeBytes: number;
+          fileType: "image" | "video";
+          storagePath: string;
+          token: string;
+          signedUrl: string;
+          publicUrl: string;
+        }>;
+      }>(signRes);
+      if (!signRes.ok) {
+        throw new Error(signJson.error ?? "Could not start upload");
+      }
+
+      if (signJson.uploads.length !== fileList.length) {
+        throw new Error("Upload session mismatch — try again");
+      }
+
+      const completed: Array<{
+        name: string;
+        mimeType: string;
+        sizeBytes: number;
+        fileType: "image" | "video";
+        storagePath: string;
+        publicUrl: string;
+      }> = [];
+
+      for (let i = 0; i < signJson.uploads.length; i++) {
+        const upload = signJson.uploads[i];
+        const file = fileList[i];
+        // Upload directly to Supabase via signed URL (no browser env client needed).
+        const putRes = await fetch(upload.signedUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type": upload.mimeType || "application/octet-stream",
+            "x-upsert": "false",
+          },
+          body: file,
+        });
+        if (!putRes.ok) {
+          const detail = (await putRes.text()).slice(0, 160);
+          throw new Error(
+            detail || `Failed to upload ${file.name} (${putRes.status})`,
+          );
+        }
+        completed.push({
+          name: upload.name,
+          mimeType: upload.mimeType,
+          sizeBytes: upload.sizeBytes,
+          fileType: upload.fileType,
+          storagePath: upload.storagePath,
+          publicUrl: upload.publicUrl,
+        });
+      }
+
+      const completeRes = await fetch("/api/library/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          folderId: target,
+          items: completed,
+        }),
+      });
+      const completeJson = await readApiJson(completeRes);
+      if (!completeRes.ok) {
+        throw new Error(completeJson.error ?? "Could not save uploaded media");
+      }
+
       toast.success(
-        files.length === 1 ? "Media uploaded" : `${files.length} files uploaded`,
+        fileList.length === 1
+          ? "Media uploaded"
+          : `${fileList.length} files uploaded`,
       );
       await load();
     } catch (e) {
