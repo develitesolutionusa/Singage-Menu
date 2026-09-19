@@ -1,3 +1,5 @@
+export type PlaybackOrientation = "landscape" | "portrait";
+
 export type PlaybackItem = {
   id: string;
   position: number;
@@ -7,6 +9,8 @@ export type PlaybackItem = {
   fileType: "image" | "video" | string;
   mimeType: string;
   url: string | null;
+  sourceLoopId?: string;
+  orientation?: PlaybackOrientation;
 };
 
 export type PlaybackPayload = {
@@ -32,9 +36,15 @@ export type PlaybackPayload = {
   loop: {
     id: string;
     name: string;
-    orientation: string;
+    orientation: PlaybackOrientation | string;
     updatedAt: string;
   } | null;
+  loops?: Array<{
+    id: string;
+    name: string;
+    orientation: PlaybackOrientation | string;
+    updatedAt: string;
+  }>;
   items: PlaybackItem[];
   updatedAt: string;
   resolution?: "exception" | "campaign";

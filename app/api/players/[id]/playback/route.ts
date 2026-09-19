@@ -21,6 +21,7 @@ type PlaybackItemOut = {
   mimeType: string;
   url: string | null;
   sourceLoopId: string;
+  orientation: "landscape" | "portrait";
 };
 
 async function buildItemsForLoops(
@@ -66,6 +67,10 @@ async function buildItemsForLoops(
   let globalPos = 0;
   for (const loopId of loopIds) {
     const group = itemsByLoop.get(loopId) ?? [];
+    const loopOrientation =
+      loopsById.get(loopId)?.orientation === "portrait"
+        ? ("portrait" as const)
+        : ("landscape" as const);
     for (const item of group) {
       const media = libraryById.get(item.library_item_id);
       items.push({
@@ -78,6 +83,7 @@ async function buildItemsForLoops(
         mimeType: media?.mime_type ?? "application/octet-stream",
         url: media?.public_url ?? null,
         sourceLoopId: loopId,
+        orientation: loopOrientation,
       });
     }
   }

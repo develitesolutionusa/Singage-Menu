@@ -20,3 +20,48 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
 }
+
+/* From Uiverse.io by wztd */
+.loader {
+  position: relative;
+  width: 1.5em;
+  aspect-ratio: 1 / 2;
+  font-size: 2.75rem;
+}
+
+.loader:before,
+.loader:after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  animation: 1.5s ease-out infinite loader;
+  border-radius: 50%;
+}
+
+.loader:before {
+  background: linear-gradient(rgb(255, 206, 58), rgb(66, 181, 73));
+}
+
+.loader:after {
+  animation-delay: 0.75s;
+  background: linear-gradient(to top, rgb(114, 223, 231), rgb(66, 181, 73));
+}
+
+@keyframes loader {
+  0%,
+  50%,
+  100% {
+    transform: translateY(0);
+  }
+
+  25% {
+    transform: translateY(70%);
+  }
+
+  75% {
+    transform: translateY(-70%);
+  }
+}

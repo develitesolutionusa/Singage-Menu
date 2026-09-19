@@ -10,6 +10,7 @@ import {
   type PlaybackItem,
   type PlaybackPayload,
 } from "@/lib/player-cache";
+import { PlLoader } from "@/components/ui/pl-loader";
 
 const HEARTBEAT_MS = 30_000;
 const POLL_MS = 15_000;
@@ -37,6 +38,54 @@ function rotationStyle(rotation: 0 | 90 | 180 | 270): React.CSSProperties {
     marginTop: "-50vw",
     marginLeft: "-50vh",
   };
+}
+
+/** Frame content to loop orientation inside the rotated stage (matches Loop Editor preview). */
+function contentFrameStyle(
+  orientation: "landscape" | "portrait",
+  rotation: 0 | 90 | 180 | 270,
+): React.CSSProperties {
+  const stageIsPortrait = rotation === 90 || rotation === 270;
+  const contentIsPortrait = orientation === "portrait";
+
+  // Matching stage + content → fill the physical screen
+  if (stageIsPortrait === contentIsPortrait) {
+    return { width: "100%", height: "100%" };
+  }
+
+  if (contentIsPortrait) {
+    // Portrait loop on a landscape stage — 9:16 letterbox (editor preview)
+    return {
+      height: "100%",
+      width: "auto",
+      maxWidth: "100%",
+      aspectRatio: "9 / 16",
+    };
+  }
+
+  // Landscape loop on a portrait stage — 16:9 pillarbox
+  return {
+    width: "100%",
+    height: "auto",
+    maxHeight: "100%",
+    aspectRatio: "16 / 9",
+  };
+}
+
+function resolveItemOrientation(
+  item: PlaybackItem,
+  payload: PlaybackPayload,
+): "landscape" | "portrait" {
+  if (item.orientation === "portrait" || item.orientation === "landscape") {
+    return item.orientation;
+  }
+  if (item.sourceLoopId && payload.loops?.length) {
+    const loop = payload.loops.find((l) => l.id === item.sourceLoopId);
+    if (loop?.orientation === "portrait") return "portrait";
+    if (loop?.orientation === "landscape") return "landscape";
+  }
+  if (payload.loop?.orientation === "portrait") return "portrait";
+  return "landscape";
 }
 
 function createAnonClient() {
@@ -77,9 +126,11 @@ export function PlayerRuntime({ playerId }: { playerId: string }) {
             (item, i) =>
               item.id === next.items[i]?.id &&
               item.durationSeconds === next.items[i]?.durationSeconds &&
-              item.url === next.items[i]?.url,
+              item.url === next.items[i]?.url &&
+              item.orientation === next.items[i]?.orientation,
           ) &&
           prev?.player.rotation === next.player.rotation &&
+          prev?.loop?.orientation === next.loop?.orientation &&
           prev?.state === next.state;
 
         if (sameLoop) return prev;
@@ -300,7 +351,7 @@ export function PlayerRuntime({ playerId }: { playerId: string }) {
   if (!payload) {
     return (
       <Shell>
-        <p className="text-zinc-400">Loading player…</p>
+        <PlLoader />
       </Shell>
     );
   }
@@ -359,6 +410,7 @@ export function PlayerRuntime({ playerId }: { playerId: string }) {
   }
 
   const current = payload.items[index] ?? payload.items[0];
+  const orientation = resolveItemOrientation(current, payload);
   const exceptionLabel = payload.exception
     ? `Exception: ${payload.exception.name}`
     : "No Exception";
@@ -366,10 +418,15 @@ export function PlayerRuntime({ playerId }: { playerId: string }) {
   return (
     <div className="relative min-h-screen overflow-hidden bg-black text-white">
       <div
-        className="flex items-center justify-center bg-black"
+        className="flex items-center justify-center overflow-hidden bg-black"
         style={rotationStyle(payload.player.rotation)}
       >
-        <MediaSlide key={`${current.id}-${index}`} item={current} />
+        <div
+          className="relative overflow-hidden bg-black"
+          style={contentFrameStyle(orientation, payload.player.rotation)}
+        >
+          <MediaSlide key={`${current.id}-${index}`} item={current} />
+        </div>
       </div>
       <div className="pointer-events-none absolute left-3 top-3 rounded bg-black/50 px-2 py-1 text-[10px] text-zinc-300">
         {payload.campaign?.name ?? "Campaign"} · {exceptionLabel}
