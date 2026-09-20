@@ -5,7 +5,7 @@ import {
   findActiveException,
   getZonedDateInfo,
 } from "@/lib/campaign-resolve";
-import type { LibraryItem, Loop } from "@/types/db";
+import type { DesignData, LibraryItem, Loop } from "@/types/db";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -15,11 +15,13 @@ type PlaybackItemOut = {
   id: string;
   position: number;
   durationSeconds: number;
-  libraryItemId: string;
+  libraryItemId: string | null;
   name: string;
   fileType: string;
   mimeType: string;
   url: string | null;
+  itemType: "media" | "design";
+  designData: DesignData | null;
   sourceLoopId: string;
   orientation: "landscape" | "portrait";
 };
@@ -47,7 +49,11 @@ async function buildItemsForLoops(
     .order("position", { ascending: true });
 
   const libraryIds = Array.from(
-    new Set((loopItems ?? []).map((i) => i.library_item_id)),
+    new Set(
+      (loopItems ?? [])
+        .map((i) => i.library_item_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
   );
 
   const { data: libraryItems } = libraryIds.length
@@ -72,7 +78,28 @@ async function buildItemsForLoops(
         ? ("portrait" as const)
         : ("landscape" as const);
     for (const item of group) {
-      const media = libraryById.get(item.library_item_id);
+      const isDesign = item.item_type === "design";
+      if (isDesign) {
+        items.push({
+          id: item.id,
+          position: globalPos++,
+          durationSeconds: Number(item.duration_seconds),
+          libraryItemId: null,
+          name: item.slide_name ?? "Template",
+          fileType: "design",
+          mimeType: "application/json",
+          url: null,
+          itemType: "design",
+          designData: (item.design_data ?? null) as DesignData | null,
+          sourceLoopId: loopId,
+          orientation: loopOrientation,
+        });
+        continue;
+      }
+
+      const media = item.library_item_id
+        ? libraryById.get(item.library_item_id)
+        : undefined;
       items.push({
         id: item.id,
         position: globalPos++,
@@ -82,6 +109,8 @@ async function buildItemsForLoops(
         fileType: media?.file_type ?? "image",
         mimeType: media?.mime_type ?? "application/octet-stream",
         url: media?.public_url ?? null,
+        itemType: "media",
+        designData: null,
         sourceLoopId: loopId,
         orientation: loopOrientation,
       });

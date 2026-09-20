@@ -35,6 +35,7 @@ Do not add Firebase, MongoDB, Express, or a separate backend server — everythi
   /(dashboard)              <- authenticated dashboard routes, wrapped in Clerk org context
     /overview/page.tsx
     /library/page.tsx
+    /templates/page.tsx
     /loops/page.tsx
     /campaigns/page.tsx
     /players/page.tsx
@@ -43,6 +44,9 @@ Do not add Firebase, MongoDB, Express, or a separate backend server — everythi
   /api
     /library/route.ts
     /library/folders/route.ts
+    /templates/route.ts
+    /templates/[id]/favorite/route.ts
+    /templates/[id]/use/route.ts
     /loops/route.ts
     /loops/[id]/items/route.ts
     /campaigns/route.ts
@@ -56,6 +60,7 @@ Do not add Firebase, MongoDB, Express, or a separate backend server — everythi
   /supabase.ts               <- server + browser Supabase clients
   /redis.ts                  <- Upstash Redis client
   /clerk.ts                  <- org/session helpers
+  /templates.ts              <- template industry constants + helpers
 /middleware.ts                <- Clerk auth guard on (dashboard) routes
 /types
   /db.ts                      <- generated Supabase types
@@ -188,10 +193,20 @@ Never commit real values. Use `.env.local` locally, Vercel env settings in deplo
 
 ## What NOT to do (applies across all phases)
 
-- Don't rename dashboard modules or reorder the sidebar (Overview → Library → Loops → Campaigns → Players → Account)
+- Don't rename dashboard modules or reorder the sidebar (Overview → Library → Templates → Loops → Campaigns → Players → Account)
 - Don't skip Campaign Exceptions as "extra" in Phase 3 — it's part of the core schema
 - Don't add a custom auth/org system alongside Clerk
 - Don't introduce a second backend framework/service
 - Don't start Android/React Native work before Phase 5
 - Don't touch production Supabase schema without a migration file
 - Don't ship a new table without an RLS policy
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

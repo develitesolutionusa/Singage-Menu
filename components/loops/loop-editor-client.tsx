@@ -34,8 +34,10 @@ import {
   Input,
   Select,
 } from "@/components/ui";
+import { TemplatePreview } from "@/components/templates/template-preview";
 import { cn, formatBytes, formatDuration } from "@/lib/utils";
 import type {
+  DesignData,
   LibraryFolder,
   LibraryItem,
   Loop,
@@ -69,6 +71,7 @@ function SortableTimelineRow({
   };
 
   const media = item.library_item;
+  const isDesign = item.item_type === "design";
 
   return (
     <div
@@ -93,7 +96,13 @@ function SortableTimelineRow({
       </button>
       <span className="w-6 shrink-0 text-xs text-zinc-400">#{index + 1}</span>
       <div className="h-9 w-14 shrink-0 overflow-hidden rounded bg-zinc-100">
-        {media?.file_type === "image" && media.public_url ? (
+        {isDesign && item.design_data ? (
+          <TemplatePreview
+            data={item.design_data as DesignData}
+            compact
+            className="h-full w-full"
+          />
+        ) : media?.file_type === "image" && media.public_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={media.public_url}
@@ -108,10 +117,10 @@ function SortableTimelineRow({
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">
-          {media?.name ?? "Asset"}
+          {isDesign ? (item.slide_name ?? "Template") : (media?.name ?? "Asset")}
         </p>
         <p className="text-xs capitalize text-zinc-500">
-          {media?.file_type ?? "media"}
+          {isDesign ? "template" : (media?.file_type ?? "media")}
         </p>
       </div>
       <div
@@ -460,6 +469,8 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
   }
 
   const previewMedia = selectedItem?.library_item ?? null;
+  const previewDesign =
+    selectedItem?.item_type === "design" ? selectedItem.design_data : null;
 
   return (
     <div className="flex min-h-[calc(100vh-8rem)] flex-col">
@@ -686,7 +697,12 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
                   : "aspect-video",
               )}
             >
-              {previewMedia?.file_type === "image" && previewMedia.public_url ? (
+              {previewDesign ? (
+                <TemplatePreview
+                  data={previewDesign as DesignData}
+                  className="h-full w-full"
+                />
+              ) : previewMedia?.file_type === "image" && previewMedia.public_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={previewMedia.public_url}

@@ -1,14 +1,18 @@
+import type { DesignData } from "@/types/db";
+
 export type PlaybackOrientation = "landscape" | "portrait";
 
 export type PlaybackItem = {
   id: string;
   position: number;
   durationSeconds: number;
-  libraryItemId: string;
+  libraryItemId: string | null;
   name: string;
-  fileType: "image" | "video" | string;
+  fileType: "image" | "video" | "design" | string;
   mimeType: string;
   url: string | null;
+  itemType?: "media" | "design";
+  designData?: DesignData | null;
   sourceLoopId?: string;
   orientation?: PlaybackOrientation;
 };

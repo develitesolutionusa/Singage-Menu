@@ -2,6 +2,66 @@ export type Orientation = "landscape" | "portrait";
 export type FileType = "image" | "video";
 export type PlayerStatus = "unpaired" | "online" | "offline";
 export type PlayerRotation = 0 | 90 | 180 | 270;
+export type LoopItemType = "media" | "design";
+
+export type TemplateIndustry =
+  | "Restaurant & Food"
+  | "Retail"
+  | "Healthcare"
+  | "Education"
+  | "Hospitality"
+  | "Corporate"
+  | "Real Estate"
+  | "Fitness"
+  | "Automotive"
+  | "Custom";
+
+export type DesignMenuItem = { name: string; price?: string };
+export type DesignSection = { title: string; items?: DesignMenuItem[] };
+
+export type DesignData = {
+  layout?: string;
+  theme?: {
+    bg?: string;
+    accent?: string;
+    text?: string;
+    muted?: string;
+    panel?: string;
+  };
+  badge?: string;
+  headline?: string;
+  subheadline?: string;
+  body?: string;
+  price?: string;
+  cta?: string;
+  items?: DesignMenuItem[];
+  sections?: DesignSection[];
+  [key: string]: unknown;
+};
+
+export type Template = {
+  id: string;
+  clerk_org_id: string | null;
+  name: string;
+  industry: TemplateIndustry;
+  category: string;
+  tags: string[];
+  orientation: Orientation;
+  default_duration_seconds: number;
+  design_data: DesignData;
+  sort_order: number;
+  is_published: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TemplateFavorite = {
+  id: string;
+  clerk_org_id: string;
+  clerk_user_id: string;
+  template_id: string;
+  created_at: string;
+};
 
 export type LibraryFolder = {
   id: string;
@@ -42,7 +102,11 @@ export type LoopItem = {
   id: string;
   clerk_org_id: string;
   loop_id: string;
-  library_item_id: string;
+  library_item_id: string | null;
+  item_type: LoopItemType;
+  source_template_id: string | null;
+  design_data: DesignData | null;
+  slide_name: string | null;
   position: number;
   duration_seconds: number;
   created_at: string;
@@ -182,7 +246,11 @@ type Tables = {
       id: string;
       clerk_org_id: string;
       loop_id: string;
-      library_item_id: string;
+      library_item_id: string | null;
+      item_type: LoopItemType;
+      source_template_id: string | null;
+      design_data: DesignData | null;
+      slide_name: string | null;
       position: number;
       duration_seconds: number;
       created_at: string;
@@ -191,7 +259,11 @@ type Tables = {
       id?: string;
       clerk_org_id: string;
       loop_id: string;
-      library_item_id: string;
+      library_item_id?: string | null;
+      item_type?: LoopItemType;
+      source_template_id?: string | null;
+      design_data?: DesignData | null;
+      slide_name?: string | null;
       position?: number;
       duration_seconds?: number;
       created_at?: string;
@@ -200,11 +272,47 @@ type Tables = {
       id: string;
       clerk_org_id: string;
       loop_id: string;
-      library_item_id: string;
+      library_item_id: string | null;
+      item_type: LoopItemType;
+      source_template_id: string | null;
+      design_data: DesignData | null;
+      slide_name: string | null;
       position: number;
       duration_seconds: number;
       created_at: string;
     }>;
+    Relationships: [];
+  };
+  templates: {
+    Row: Template;
+    Insert: {
+      id?: string;
+      clerk_org_id?: string | null;
+      name: string;
+      industry: TemplateIndustry;
+      category: string;
+      tags?: string[];
+      orientation?: Orientation;
+      default_duration_seconds?: number;
+      design_data?: DesignData;
+      sort_order?: number;
+      is_published?: boolean;
+      created_at?: string;
+      updated_at?: string;
+    };
+    Update: Partial<Template>;
+    Relationships: [];
+  };
+  template_favorites: {
+    Row: TemplateFavorite;
+    Insert: {
+      id?: string;
+      clerk_org_id: string;
+      clerk_user_id: string;
+      template_id: string;
+      created_at?: string;
+    };
+    Update: Partial<TemplateFavorite>;
     Relationships: [];
   };
   players: {

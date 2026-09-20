@@ -11,6 +11,8 @@ import {
   type PlaybackPayload,
 } from "@/lib/player-cache";
 import { PlLoader } from "@/components/ui/pl-loader";
+import { TemplatePreview } from "@/components/templates/template-preview";
+import type { DesignData } from "@/types/db";
 
 const HEARTBEAT_MS = 30_000;
 const POLL_MS = 15_000;
@@ -437,6 +439,22 @@ export function PlayerRuntime({ playerId }: { playerId: string }) {
 }
 
 function MediaSlide({ item }: { item: PlaybackItem }) {
+  if (item.itemType === "design" || item.fileType === "design") {
+    if (!item.designData) {
+      return (
+        <div className="flex h-full w-full items-center justify-center text-zinc-500">
+          Missing template design
+        </div>
+      );
+    }
+    return (
+      <TemplatePreview
+        data={item.designData as DesignData}
+        className="h-full w-full"
+      />
+    );
+  }
+
   if (!item.url) {
     return (
       <div className="flex h-full w-full items-center justify-center text-zinc-500">
