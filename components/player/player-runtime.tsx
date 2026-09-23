@@ -11,8 +11,8 @@ import {
   type PlaybackPayload,
 } from "@/lib/player-cache";
 import { PlLoader } from "@/components/ui/pl-loader";
-import { TemplatePreview } from "@/components/templates/template-preview";
-import type { DesignData } from "@/types/db";
+import { PlaybackSlide } from "@/components/player/playback-slide";
+import { playbackItemToSlideInput } from "@/lib/preview-slides";
 
 const HEARTBEAT_MS = 30_000;
 const POLL_MS = 15_000;
@@ -427,7 +427,11 @@ export function PlayerRuntime({ playerId }: { playerId: string }) {
           className="relative overflow-hidden bg-black"
           style={contentFrameStyle(orientation, payload.player.rotation)}
         >
-          <MediaSlide key={`${current.id}-${index}`} item={current} />
+          <MediaSlide
+            key={`${current.id}-${index}`}
+            item={current}
+            orientation={orientation}
+          />
         </div>
       </div>
       <div className="pointer-events-none absolute left-3 top-3 rounded bg-black/50 px-2 py-1 text-[10px] text-zinc-300">
@@ -438,52 +442,28 @@ export function PlayerRuntime({ playerId }: { playerId: string }) {
   );
 }
 
-function MediaSlide({ item }: { item: PlaybackItem }) {
-  if (item.itemType === "design" || item.fileType === "design") {
-    if (!item.designData) {
-      return (
-        <div className="flex h-full w-full items-center justify-center text-zinc-500">
-          Missing template design
-        </div>
-      );
-    }
-    return (
-      <TemplatePreview
-        data={item.designData as DesignData}
-        className="h-full w-full"
-      />
-    );
-  }
-
-  if (!item.url) {
-    return (
-      <div className="flex h-full w-full items-center justify-center text-zinc-500">
-        Missing media URL
-      </div>
-    );
-  }
-
-  if (item.fileType === "video") {
-    return (
-      // eslint-disable-next-line jsx-a11y/media-has-caption
-      <video
-        src={item.url}
-        className="h-full w-full object-contain"
-        autoPlay
-        muted
-        playsInline
-        loop={false}
-      />
-    );
-  }
-
+function MediaSlide({
+  item,
+  orientation,
+}: {
+  item: PlaybackItem;
+  orientation: "landscape" | "portrait";
+}) {
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={item.url}
-      alt={item.name}
-      className="h-full w-full object-contain"
-      draggable={false}
+    <PlaybackSlide
+      slide={playbackItemToSlideInput({
+        itemType: item.itemType,
+        fileType: item.fileType,
+        designData: item.designData,
+        url: item.url,
+        name: item.name,
+        orientation: item.orientation ?? orientation,
+      })}
+      playAnimations
+      animationKey={item.id}
+      muted
+      autoPlayVideo
+      className="h-full w-full"
     />
   );
 }

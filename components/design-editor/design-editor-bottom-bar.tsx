@@ -20,6 +20,7 @@ export function DesignEditorBottomBar({
   onToggleLayers,
   locked,
   onToggleLock,
+  canUnlock = true,
   zoom,
   onZoomIn,
   onZoomOut,
@@ -36,6 +37,8 @@ export function DesignEditorBottomBar({
   onToggleLayers: () => void;
   locked: boolean;
   onToggleLock: () => void;
+  /** When layout is locked, Unlock requires unlock_layout permission. */
+  canUnlock?: boolean;
   zoom: number;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -48,6 +51,13 @@ export function DesignEditorBottomBar({
   canRedo?: boolean;
   canMutate?: boolean;
 }) {
+  const unlockDisabled = locked && !canUnlock;
+  const lockLabel = locked
+    ? unlockDisabled
+      ? "Unlock Layout (permission required)"
+      : "Unlock Layout"
+    : "Lock Layout";
+
   return (
     <footer className="flex shrink-0 flex-wrap items-center gap-1 border-t border-zinc-200 bg-white px-3 py-2">
       <ToolButton
@@ -58,8 +68,9 @@ export function DesignEditorBottomBar({
       />
       <ToolButton
         onClick={onToggleLock}
-        label={locked ? "Unlock" : "Lock"}
+        label={lockLabel}
         icon={locked ? Unlock : Lock}
+        disabled={unlockDisabled}
       />
       <ToolButton
         onClick={onDuplicate}
@@ -90,7 +101,9 @@ export function DesignEditorBottomBar({
       <ToolButton onClick={onFit} label="Fit" icon={Scan} />
 
       <p className="ml-auto hidden text-[11px] text-zinc-400 sm:block">
-        Space=pan · Ctrl/Cmd+scroll=zoom · Del · Ctrl/Cmd+C/V/D/Z
+        {locked
+          ? "Layout locked · content editable · Unlock Layout needs permission"
+          : "Space=pan · Ctrl/Cmd+scroll=zoom · Del · Ctrl/Cmd+C/V/D/Z"}
       </p>
     </footer>
   );
@@ -126,7 +139,13 @@ function ToolButton({
       aria-label={label}
     >
       <Icon className="h-3.5 w-3.5" />
-      <span className="hidden md:inline">{label}</span>
+      <span className="hidden md:inline">
+        {label.startsWith("Unlock")
+          ? "Unlock Layout"
+          : label.startsWith("Lock Layout")
+            ? "Lock Layout"
+            : label}
+      </span>
     </Button>
   );
 }

@@ -7,14 +7,16 @@ import { DesignEditorBottomBar } from "@/components/design-editor/design-editor-
 import { DesignEditorCanvas } from "@/components/design-editor/design-editor-canvas";
 import { DesignEditorLeftPanel } from "@/components/design-editor/design-editor-left-panel";
 import { DesignEditorProperties } from "@/components/design-editor/design-editor-properties";
-import { DesignElementView } from "@/components/design-editor/design-element-view";
+import {
+  DesignPreviewMode,
+  type DesignPreviewSlide,
+} from "@/components/design-editor/design-preview-mode";
 import {
   DesignEditorToolbar,
   type AutoSaveStatus,
   type EditorWorkspaceMode,
 } from "@/components/design-editor/design-editor-toolbar";
 import type { DesignBlockType } from "@/components/design-editor/blocks";
-import { TemplatePreview } from "@/components/templates/template-preview";
 import type { TemplateListItem } from "@/lib/templates";
 import { resolveSlideDesign } from "@/lib/loop-slides";
 import {
@@ -63,6 +65,7 @@ export function DesignEditorShell({
   onSave,
   onDesignDataChange,
   slideId,
+  previewSlides,
 }: {
   mode: EditorWorkspaceMode;
   onModeChange: (mode: EditorWorkspaceMode) => void;
@@ -80,6 +83,8 @@ export function DesignEditorShell({
   onDesignDataChange?: (data: DesignData) => void;
   /** When this changes, editor reloads elements from design data. */
   slideId?: string | null;
+  /** Full loop sequence for Preview Mode (player-matched playback). */
+  previewSlides?: DesignPreviewSlide[];
 }) {
   const resolvedDesign = ensureSmartDesign(
     resolveSlideDesign({
@@ -631,105 +636,45 @@ export function DesignEditorShell({
       />
 
       {previewOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 p-6">
-          <button
-            type="button"
-            className="absolute inset-0 cursor-default"
-            aria-label="Close preview"
-            onClick={() => setPreviewOpen(false)}
-          />
-          <div className="relative w-full max-w-5xl overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-zinc-700 px-4 py-3">
-              <div>
-                <p className="text-sm font-semibold text-white">Preview</p>
-                <p className="text-xs text-zinc-400">
-                  {slideName || "Untitled slide"} · {orientation}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPreviewOpen(false)}
-                className="rounded-md bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:bg-zinc-700"
-              >
-                Close Preview
-              </button>
-            </div>
-            <div
-              className={cn(
-                "mx-auto overflow-hidden bg-black",
-                orientation === "portrait"
-                  ? "aspect-[9/16] max-h-[75vh] max-w-sm"
-                  : "aspect-video max-h-[75vh] w-full",
-              )}
-            >
-              {elements.length > 0 ? (
-                <CanvasPreview
-                  elements={elements}
-                  orientation={orientation}
-                  background={workingDesign?.theme?.bg}
-                />
-              ) : workingDesign ? (
-                <TemplatePreview data={workingDesign} className="h-full w-full" />
-              ) : (
-                <div className="flex h-full items-center justify-center text-sm text-zinc-500">
-                  Nothing to preview on this slide yet.
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <DesignPreviewMode
+          open={previewOpen}
+          onClose={() => setPreviewOpen(false)}
+          title={slideName || "Preview"}
+          defaultOrientation={orientation}
+          initialSlideId={slideId}
+          slides={(() => {
+            const liveDesign = withElements(workingDesign, elements);
+            const liveSlide: DesignPreviewSlide = {
+              id: slideId ?? "__current__",
+              name: slideName || "Untitled slide",
+              durationSeconds: 10,
+              slide: {
+                kind: "design",
+                designData: liveDesign,
+                orientation,
+                name: slideName,
+              },
+            };
+            if (!previewSlides?.length) return [liveSlide];
+            return previewSlides.map((s) =>
+              slideId && s.id === slideId
+                ? {
+                    ...s,
+                    name: slideName || s.name,
+                    slide: {
+                      kind: "design" as const,
+                      designData: liveDesign,
+                      orientation,
+                      name: slideName || s.name,
+                    },
+                  }
+                : s,
+            );
+          })()}
+        />
       ) : null}
     </div>
   );
-}
-
-function CanvasPreview({
-  elements,
-  orientation,
-  background,
-}: {
-  elements: DesignElement[];
-  orientation: Orientation;
-  background?: string;
-}) {
-  const artboard = getArtboardSize(orientation);
-  const sorted = [...elements]
-    .filter((el) => !el.hidden)
-    .sort((a, b) => a.zIndex - b.zIndex);
-
-  return (
-    <div className="relative h-full w-full">
-      <div
-        className="absolute left-1/2 top-1/2 origin-center"
-        style={{
-          width: artboard.width,
-          height: artboard.height,
-          background: background ?? "#0f172a",
-          transform: "translate(-50%, -50%) scale(var(--preview-scale, 0.7))",
-        }}
-      >
-        {sorted.map((el) => (
-          <div
-            key={el.id}
-            className="absolute"
-            style={{
-              left: el.x,
-              top: el.y,
-              width: el.width,
-              height: el.height,
-              zIndex: el.zIndex,
-            }}
-          >
-            <DesignElementViewLazy element={el} />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function DesignElementViewLazy({ element }: { element: DesignElement }) {
-  return <DesignElementView element={element} />;
 }
 
 function isTypingTarget(target: EventTarget | null) {

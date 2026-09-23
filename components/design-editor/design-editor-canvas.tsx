@@ -19,6 +19,10 @@ import {
   selectionBounds,
   snapWithThreshold,
 } from "@/lib/design-elements";
+import {
+  buildDynamicContext,
+  type OrgProfile,
+} from "@/lib/dynamic-data";
 import { cn } from "@/lib/utils";
 import type { DesignData, Orientation } from "@/types/db";
 
@@ -65,6 +69,7 @@ export function DesignEditorCanvas({
   pan,
   onPanChange,
   interactionLocked = false,
+  orgProfile = null,
 }: {
   orientation: Orientation;
   zoom: number;
@@ -81,8 +86,10 @@ export function DesignEditorCanvas({
   onPanChange: (pan: { x: number; y: number }) => void;
   /** When true, block move/resize/drop (Smart Template layout lock). */
   interactionLocked?: boolean;
+  orgProfile?: OrgProfile | null;
 }) {
   const artboard = getArtboardSize(orientation);
+  const dataContext = buildDynamicContext(designData, orgProfile);
   const stageRef = useRef<HTMLDivElement>(null);
   const artboardRef = useRef<HTMLDivElement>(null);
   const [guides, setGuides] = useState<AlignGuide[]>([]);
@@ -387,7 +394,11 @@ export function DesignEditorCanvas({
           >
             {hasLegacyPreview && designData ? (
               <div className="pointer-events-none absolute inset-0 opacity-90">
-                <TemplatePreview data={designData} className="h-full w-full" />
+                <TemplatePreview
+                  data={designData}
+                  className="h-full w-full"
+                  orgProfile={orgProfile}
+                />
               </div>
             ) : null}
 
@@ -436,6 +447,8 @@ export function DesignEditorCanvas({
                     <DesignElementView
                       element={element}
                       selected={isSelected}
+                      dataContext={dataContext}
+                      showDynamicBadge
                     />
                   </div>
                 </div>

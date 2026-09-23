@@ -18,10 +18,14 @@ export function DesignEditorLeftPanel({
   selectedBlockType,
   onSelectBlock,
   onSelectTemplate,
+  layoutLocked = false,
+  canAddBlocks = true,
 }: {
   selectedBlockType: DesignBlockType | null;
   onSelectBlock: (type: DesignBlockType) => void;
   onSelectTemplate?: (template: TemplateListItem) => void;
+  layoutLocked?: boolean;
+  canAddBlocks?: boolean;
 }) {
   const [tab, setTab] = useState<LeftTab>("templates");
   const [q, setQ] = useState("");
@@ -209,8 +213,16 @@ export function DesignEditorLeftPanel({
                 onChange={(e) => setBlockQuery(e.target.value)}
                 placeholder="Search blocks…"
                 className="h-8 pl-8 text-xs"
+                disabled={!canAddBlocks}
               />
             </div>
+            {!canAddBlocks ? (
+              <p className="mt-2 rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">
+                {layoutLocked
+                  ? "Layout locked — Unlock Layout to add blocks"
+                  : "Missing Edit Design permission"}
+              </p>
+            ) : null}
           </div>
           <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2">
             {filteredBlocks.map((block) => {
@@ -220,15 +232,22 @@ export function DesignEditorLeftPanel({
                 <button
                   key={block.type}
                   type="button"
-                  draggable
+                  draggable={canAddBlocks}
+                  disabled={!canAddBlocks}
                   onDragStart={(e) => {
+                    if (!canAddBlocks) {
+                      e.preventDefault();
+                      return;
+                    }
                     e.dataTransfer.setData(BLOCK_DRAG_MIME, block.type);
                     e.dataTransfer.setData("text/plain", block.type);
                     e.dataTransfer.effectAllowed = "copy";
                   }}
                   onClick={() => onSelectBlock(block.type)}
                   className={cn(
-                    "flex w-full cursor-grab items-start gap-2.5 rounded-lg border px-2.5 py-2 text-left transition active:cursor-grabbing",
+                    "flex w-full items-start gap-2.5 rounded-lg border px-2.5 py-2 text-left transition",
+                    canAddBlocks && "cursor-grab active:cursor-grabbing",
+                    !canAddBlocks && "cursor-not-allowed opacity-50",
                     active
                       ? "border-blue-500 bg-blue-50 ring-1 ring-blue-500"
                       : "border-transparent hover:border-zinc-200 hover:bg-zinc-50",
@@ -262,7 +281,9 @@ export function DesignEditorLeftPanel({
             ) : null}
           </div>
           <p className="border-t border-zinc-100 px-3 py-2 text-[11px] text-zinc-400">
-            Drag a block onto the canvas, or click to place it in the center.
+            {canAddBlocks
+              ? "Drag a block onto the canvas, or click to place it in the center."
+              : "Structural edits are disabled while the layout is locked."}
           </p>
         </div>
       )}

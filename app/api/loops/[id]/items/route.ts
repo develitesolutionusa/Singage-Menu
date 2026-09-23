@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { isOrgContext, requireOrg } from "@/lib/clerk";
+import { isOrgContext, requireOrg, requirePermission } from "@/lib/clerk";
+import { authorizeDesignDataUpdate } from "@/lib/design-auth";
 import { createServiceClient } from "@/lib/supabase";
 import { logActivity } from "@/lib/activity";
 import type { DesignData } from "@/types/db";
@@ -54,12 +55,19 @@ export async function GET(_request: Request, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ loop, items: items ?? [] });
+  return NextResponse.json({
+    loop,
+    items: items ?? [],
+    permissions: ctx.permissions,
+  });
 }
 
 export async function POST(request: Request, { params }: Params) {
   const ctx = await requireOrg();
   if (!isOrgContext(ctx)) return ctx.error;
+
+  const denied = requirePermission(ctx, "edit_content");
+  if (denied) return denied;
 
   const { id } = await params;
   const body = itemSchema.parse(await request.json());
@@ -149,6 +157,36 @@ export async function PATCH(request: Request, { params }: Params) {
     return NextResponse.json({ error: "Loop not found" }, { status: 404 });
   }
 
+  const designItemIds = body.items
+    .filter((item) => item.contentData != null || item.designData != null)
+    .map((item) => item.id);
+
+  const previousById = new Map<string, DesignData | null>();
+  if (designItemIds.length > 0) {
+    const { data: existingRows, error: existingError } = await supabase
+      .from("loop_items")
+      .select("id, design_data, content_data")
+      .eq("clerk_org_id", ctx.orgId)
+      .eq("loop_id", id)
+      .in("id", designItemIds);
+
+    if (existingError) {
+      return NextResponse.json(
+        { error: existingError.message },
+        { status: 500 },
+      );
+    }
+
+    for (const row of existingRows ?? []) {
+      previousById.set(
+        row.id,
+        (row.content_data as DesignData | null) ??
+          (row.design_data as DesignData | null) ??
+          null,
+      );
+    }
+  }
+
   for (const item of body.items) {
     const update: {
       position: number;
@@ -163,15 +201,28 @@ export async function PATCH(request: Request, { params }: Params) {
     if (item.durationSeconds != null) {
       update.duration_seconds = item.durationSeconds;
     }
-    if (item.contentData != null) {
-      update.content_data = item.contentData as DesignData;
-      update.design_data = item.contentData as DesignData;
-      update.publish_status = "saved";
-    } else if (item.designData != null) {
-      update.design_data = item.designData as DesignData;
-      update.content_data = item.designData as DesignData;
+
+    const incomingDesign =
+      (item.contentData as DesignData | undefined) ??
+      (item.designData as DesignData | undefined);
+
+    if (incomingDesign != null) {
+      const authorized = authorizeDesignDataUpdate(
+        previousById.get(item.id) ?? null,
+        incomingDesign,
+        ctx.permissions,
+      );
+      if (!authorized.ok) {
+        return NextResponse.json(
+          { error: authorized.error, permission: authorized.permission },
+          { status: 403 },
+        );
+      }
+      update.content_data = authorized.data;
+      update.design_data = authorized.data;
       update.publish_status = "saved";
     }
+
     if (item.slideName != null) {
       update.slide_name = item.slideName;
     }
@@ -194,6 +245,9 @@ export async function PATCH(request: Request, { params }: Params) {
 export async function DELETE(request: Request, { params }: Params) {
   const ctx = await requireOrg();
   if (!isOrgContext(ctx)) return ctx.error;
+
+  const denied = requirePermission(ctx, "edit_content");
+  if (denied) return denied;
 
   const { id } = await params;
   const body = z

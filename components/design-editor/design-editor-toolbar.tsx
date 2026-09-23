@@ -34,6 +34,7 @@ export function DesignEditorToolbar({
   onPreview,
   onSave,
   onPublish,
+  canPublish = true,
   saving = false,
   dirty = false,
 }: {
@@ -52,6 +53,7 @@ export function DesignEditorToolbar({
   onPreview: () => void;
   onSave: () => void;
   onPublish: () => void;
+  canPublish?: boolean;
   saving?: boolean;
   dirty?: boolean;
 }) {
@@ -182,6 +184,8 @@ export function DesignEditorToolbar({
           type="button"
           className="h-8 bg-blue-600 hover:bg-blue-700"
           onClick={onPublish}
+          disabled={!canPublish}
+          title={canPublish ? "Publish" : "Publish requires org admin permission"}
         >
           <Upload className="h-4 w-4" />
           Publish

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   DndContext,
@@ -21,6 +21,7 @@ import {
   ChevronLeft,
   Folder,
   GripVertical,
+  Maximize2,
   Pause,
   Play,
   SkipForward,
@@ -35,9 +36,12 @@ import {
   Select,
 } from "@/components/ui";
 import { DesignEditorShell } from "@/components/design-editor/design-editor-shell";
+import { DesignPreviewMode } from "@/components/design-editor/design-preview-mode";
 import type { EditorWorkspaceMode } from "@/components/design-editor/design-editor-toolbar";
+import { PlaybackSlide } from "@/components/player/playback-slide";
 import { TemplatePreview } from "@/components/templates/template-preview";
 import { resolveSlideDesign } from "@/lib/loop-slides";
+import { loopItemsToPreviewSlides } from "@/lib/preview-slides";
 import { cn, formatBytes, formatDuration } from "@/lib/utils";
 import type {
   DesignData,
@@ -178,6 +182,7 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
   const [deleting, setDeleting] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [fullscreenPreview, setFullscreenPreview] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [workspaceMode, setWorkspaceMode] =
     useState<EditorWorkspaceMode>("timeline");
@@ -188,7 +193,6 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
     itemsKey: string;
   } | null>(null);
 
-  const videoRef = useRef<HTMLVideoElement>(null);
   const folderId = path.length ? path[path.length - 1].id : null;
 
   const sensors = useSensors(
@@ -308,9 +312,11 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
 
   useEffect(() => {
     if (!playing || !selectedItem) return;
-    const media = selectedItem.library_item;
-    if (media?.file_type === "video") {
-      void videoRef.current?.play().catch(() => undefined);
+    if (
+      selectedItem.item_type !== "design" &&
+      selectedItem.library_item?.file_type === "video"
+    ) {
+      // Video advance is handled by PlaybackSlide onVideoEnded
       return;
     }
     const ms = Math.max(1, Number(selectedItem.duration_seconds) || 1) * 1000;
@@ -423,7 +429,6 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
 
   function pausePreview() {
     setPlaying(false);
-    videoRef.current?.pause();
   }
 
   function nextPreview() {
@@ -437,6 +442,18 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
     selectedItem?.item_type === "design"
       ? resolveSlideDesign(selectedItem)
       : null;
+
+  const loopPreviewSlides = useMemo(
+    () => loopItemsToPreviewSlides(items, editOrientation),
+    [items, editOrientation],
+  );
+
+  const selectedPreviewSlide = useMemo(() => {
+    if (!selectedItem) return null;
+    return (
+      loopPreviewSlides.find((s) => s.id === selectedItem.id)?.slide ?? null
+    );
+  }, [loopPreviewSlides, selectedItem]);
 
   const handleDesignDataChange = useCallback(
     (data: DesignData) => {
@@ -558,6 +575,7 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
           onSave={() => void saveAll()}
           onDesignDataChange={handleDesignDataChange}
           slideId={selectedId}
+          previewSlides={loopPreviewSlides}
         />
       ) : (
         <>
@@ -793,8 +811,18 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
 
         {/* Preview pane */}
         <section className="flex min-h-[320px] flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white">
-          <div className="border-b border-zinc-200 px-3 py-2">
+          <div className="flex items-center justify-between border-b border-zinc-200 px-3 py-2">
             <p className="text-sm font-semibold">Preview</p>
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-7 gap-1 px-2 text-xs"
+              disabled={items.length === 0}
+              onClick={() => setFullscreenPreview(true)}
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+              Fullscreen
+            </Button>
           </div>
           <div className="flex flex-1 flex-col gap-3 p-3">
             <div
@@ -805,28 +833,18 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
                   : "aspect-video",
               )}
             >
-              {previewDesign ? (
-                <TemplatePreview
-                  data={previewDesign as DesignData}
-                  className="h-full w-full"
-                />
-              ) : previewMedia?.file_type === "image" && previewMedia.public_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={previewMedia.public_url}
-                  alt={previewMedia.name}
-                  className="h-full w-full object-contain"
-                />
-              ) : previewMedia?.file_type === "video" &&
-                previewMedia.public_url ? (
-                <video
-                  ref={videoRef}
-                  key={previewMedia.id}
-                  src={previewMedia.public_url}
-                  className="h-full w-full object-contain"
+              {selectedPreviewSlide ? (
+                <PlaybackSlide
+                  slide={{
+                    ...selectedPreviewSlide,
+                    orientation: editOrientation,
+                  }}
+                  playAnimations={playing}
+                  animationKey={selectedId ?? "none"}
+                  autoPlayVideo={playing}
                   muted
-                  playsInline
-                  onEnded={nextPreview}
+                  className="h-full w-full"
+                  onVideoEnded={nextPreview}
                 />
               ) : (
                 <div className="flex h-full items-center justify-center text-xs text-zinc-400">
@@ -873,6 +891,15 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
           </div>
         </section>
       </div>
+
+      <DesignPreviewMode
+        open={fullscreenPreview}
+        onClose={() => setFullscreenPreview(false)}
+        title={editName || "Loop preview"}
+        defaultOrientation={editOrientation}
+        initialSlideId={selectedId}
+        slides={loopPreviewSlides}
+      />
 
       <div className="sticky bottom-0 z-10 mt-6 flex items-center justify-between border-t border-zinc-200 bg-white/95 px-6 py-4 backdrop-blur">
         <p className="text-sm text-zinc-500">
