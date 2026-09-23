@@ -34,7 +34,10 @@ import {
   Input,
   Select,
 } from "@/components/ui";
+import { DesignEditorShell } from "@/components/design-editor/design-editor-shell";
+import type { EditorWorkspaceMode } from "@/components/design-editor/design-editor-toolbar";
 import { TemplatePreview } from "@/components/templates/template-preview";
+import { resolveSlideDesign } from "@/lib/loop-slides";
 import { cn, formatBytes, formatDuration } from "@/lib/utils";
 import type {
   DesignData,
@@ -96,9 +99,13 @@ function SortableTimelineRow({
       </button>
       <span className="w-6 shrink-0 text-xs text-zinc-400">#{index + 1}</span>
       <div className="h-9 w-14 shrink-0 overflow-hidden rounded bg-zinc-100">
-        {isDesign && item.design_data ? (
+        {isDesign && (item.content_data || item.design_data) ? (
           <TemplatePreview
-            data={item.design_data as DesignData}
+            data={
+              (resolveSlideDesign(item) ??
+                item.content_data ??
+                item.design_data) as DesignData
+            }
             compact
             className="h-full w-full"
           />
@@ -172,6 +179,9 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [workspaceMode, setWorkspaceMode] =
+    useState<EditorWorkspaceMode>("timeline");
+  const [designDirty, setDesignDirty] = useState(false);
   const [baseline, setBaseline] = useState<{
     name: string;
     orientation: Orientation;
@@ -245,9 +255,10 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
     setDirty(
       editName.trim() !== baseline.name ||
         editOrientation !== baseline.orientation ||
-        itemsKey !== baseline.itemsKey,
+        itemsKey !== baseline.itemsKey ||
+        designDirty,
     );
-  }, [baseline, editName, editOrientation, itemsKey]);
+  }, [baseline, designDirty, editName, editOrientation, itemsKey]);
 
   const totalSeconds = useMemo(
     () =>
@@ -385,53 +396,6 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
     await load();
   }
 
-  async function saveAll() {
-    if (!editName.trim()) {
-      const message = "Loop name is required";
-      setError(message);
-      toast.error(message);
-      return;
-    }
-    setSaving(true);
-    setError(null);
-    try {
-      const metaRes = await fetch(`/api/loops/${loopId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: editName.trim(),
-          orientation: editOrientation,
-        }),
-      });
-      const metaJson = await metaRes.json();
-      if (!metaRes.ok) throw new Error(metaJson.error ?? "Could not save loop");
-
-      const itemsRes = await fetch(`/api/loops/${loopId}/items`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: items.map((item, index) => ({
-            id: item.id,
-            position: index,
-            durationSeconds: Number(item.duration_seconds),
-          })),
-        }),
-      });
-      const itemsJson = await itemsRes.json();
-      if (!itemsRes.ok) throw new Error(itemsJson.error ?? "Could not save items");
-
-      setLoop(metaJson.loop);
-      toast.success("Loop saved");
-      await load();
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "Save failed";
-      setError(message);
-      toast.error(message);
-    } finally {
-      setSaving(false);
-    }
-  }
-
   async function confirmDeleteLoop() {
     setDeleting(true);
     setError(null);
@@ -470,7 +434,79 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
 
   const previewMedia = selectedItem?.library_item ?? null;
   const previewDesign =
-    selectedItem?.item_type === "design" ? selectedItem.design_data : null;
+    selectedItem?.item_type === "design"
+      ? resolveSlideDesign(selectedItem)
+      : null;
+
+  function handleDesignDataChange(data: DesignData) {
+    if (!selectedId) return;
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === selectedId
+          ? {
+              ...item,
+              content_data: data,
+              design_data: data,
+              publish_status: "draft",
+            }
+          : item,
+      ),
+    );
+    setDesignDirty(true);
+  }
+
+  async function saveAll() {
+    if (!editName.trim()) {
+      const message = "Loop name is required";
+      setError(message);
+      toast.error(message);
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const metaRes = await fetch(`/api/loops/${loopId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editName.trim(),
+          orientation: editOrientation,
+        }),
+      });
+      const metaJson = await metaRes.json();
+      if (!metaRes.ok) throw new Error(metaJson.error ?? "Could not save loop");
+
+      const itemsRes = await fetch(`/api/loops/${loopId}/items`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: items.map((item, index) => ({
+            id: item.id,
+            position: index,
+            durationSeconds: Number(item.duration_seconds),
+            ...(item.item_type === "design"
+              ? {
+                  contentData: item.content_data ?? item.design_data ?? {},
+                  slideName: item.slide_name ?? undefined,
+                }
+              : {}),
+          })),
+        }),
+      });
+      const itemsJson = await itemsRes.json();
+      if (!itemsRes.ok) throw new Error(itemsJson.error ?? "Could not save items");
+
+      toast.success("Loop saved");
+      setDesignDirty(false);
+      await load();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Could not save";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div className="flex min-h-[calc(100vh-8rem)] flex-col">
@@ -485,7 +521,44 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
         onConfirm={() => void confirmDeleteLoop()}
       />
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      {workspaceMode === "design" ? (
+        <DesignEditorShell
+          mode={workspaceMode}
+          onModeChange={(mode) => {
+            if (mode === "timeline") setWorkspaceMode("timeline");
+            else setWorkspaceMode("design");
+          }}
+          slideName={
+            selectedItem?.slide_name ||
+            selectedItem?.library_item?.name ||
+            editName ||
+            "Untitled slide"
+          }
+          onSlideNameChange={(value) => {
+            if (!selectedId) return;
+            setItems((prev) =>
+              prev.map((item) =>
+                item.id === selectedId ? { ...item, slide_name: value } : item,
+              ),
+            );
+            setDesignDirty(true);
+          }}
+          orientation={editOrientation}
+          onOrientationChange={setEditOrientation}
+          designData={selectedItem?.design_data ?? null}
+          contentData={selectedItem?.content_data ?? null}
+          autoSaveStatus={
+            saving ? "saving" : dirty ? "unsaved" : "saved"
+          }
+          dirty={dirty}
+          saving={saving}
+          onSave={() => void saveAll()}
+          onDesignDataChange={handleDesignDataChange}
+          slideId={selectedId}
+        />
+      ) : (
+        <>
+      <div className="mb-4 flex flex-wrap items-center gap-3 px-6 pt-4">
         <Link
           href="/loops"
           className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-800"
@@ -508,6 +581,38 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
           <option value="landscape">Landscape</option>
           <option value="portrait">Portrait</option>
         </Select>
+        <div className="inline-flex rounded-lg border border-zinc-200 bg-zinc-50 p-0.5">
+          <button
+            type="button"
+            onClick={() => setWorkspaceMode("timeline")}
+            className="rounded-md bg-white px-3 py-1.5 text-xs font-medium text-zinc-900 shadow-sm"
+          >
+            Timeline
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (
+                selectedItem?.item_type === "design" ||
+                items.some((i) => i.item_type === "design")
+              ) {
+                if (selectedItem?.item_type !== "design") {
+                  const firstDesign = items.find((i) => i.item_type === "design");
+                  if (firstDesign) setSelectedId(firstDesign.id);
+                }
+                setWorkspaceMode("design");
+              } else {
+                toast.message("Add a Smart Template slide first", {
+                  description:
+                    "Use Template from the Template Library, then open Design Editor.",
+                });
+              }
+            }}
+            className="rounded-md px-3 py-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-800"
+          >
+            Design Editor
+          </button>
+        </div>
         <span className="text-sm text-zinc-500">
           Running time {formatDuration(totalSeconds)} · {items.length} item
           {items.length === 1 ? "" : "s"}
@@ -756,15 +861,17 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
               </Button>
             </div>
             <p className="truncate text-center text-xs text-zinc-500">
-              {previewMedia
-                ? `Now: ${previewMedia.name}`
-                : "Nothing selected"}
+              {previewDesign
+                ? `Now: ${selectedItem?.slide_name ?? "Template"}`
+                : previewMedia
+                  ? `Now: ${previewMedia.name}`
+                  : "Nothing selected"}
             </p>
           </div>
         </section>
       </div>
 
-      <div className="sticky bottom-0 z-10 -mx-6 mt-6 flex items-center justify-between border-t border-zinc-200 bg-white/95 px-6 py-4 backdrop-blur">
+      <div className="sticky bottom-0 z-10 mt-6 flex items-center justify-between border-t border-zinc-200 bg-white/95 px-6 py-4 backdrop-blur">
         <p className="text-sm text-zinc-500">
           {dirty ? "Unsaved changes" : loop ? "All changes saved" : "Loading…"}
         </p>
@@ -776,6 +883,8 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
           {saving ? "Saving…" : "Save"}
         </Button>
       </div>
+        </>
+      )}
     </div>
   );
 }

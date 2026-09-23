@@ -3,6 +3,7 @@ import { z } from "zod";
 import { isOrgContext, requireOrg } from "@/lib/clerk";
 import { createServiceClient } from "@/lib/supabase";
 import { logActivity } from "@/lib/activity";
+import type { DesignData } from "@/types/db";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -17,6 +18,9 @@ const reorderSchema = z.object({
       id: z.string().uuid(),
       position: z.number().int().min(0),
       durationSeconds: z.number().positive().max(36000).optional(),
+      contentData: z.record(z.string(), z.unknown()).optional(),
+      designData: z.record(z.string(), z.unknown()).optional(),
+      slideName: z.string().trim().min(1).max(120).optional(),
     }),
   ),
 });
@@ -146,11 +150,30 @@ export async function PATCH(request: Request, { params }: Params) {
   }
 
   for (const item of body.items) {
-    const update: { position: number; duration_seconds?: number } = {
+    const update: {
+      position: number;
+      duration_seconds?: number;
+      content_data?: DesignData;
+      design_data?: DesignData;
+      slide_name?: string;
+      publish_status?: "draft" | "saved" | "published";
+    } = {
       position: item.position,
     };
     if (item.durationSeconds != null) {
       update.duration_seconds = item.durationSeconds;
+    }
+    if (item.contentData != null) {
+      update.content_data = item.contentData as DesignData;
+      update.design_data = item.contentData as DesignData;
+      update.publish_status = "saved";
+    } else if (item.designData != null) {
+      update.design_data = item.designData as DesignData;
+      update.content_data = item.designData as DesignData;
+      update.publish_status = "saved";
+    }
+    if (item.slideName != null) {
+      update.slide_name = item.slideName;
     }
 
     const { error } = await supabase

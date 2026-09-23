@@ -4,9 +4,12 @@ import { UserButton } from "@clerk/nextjs";
 import { usePathname } from "next/navigation";
 import { OrgGate } from "@/components/dashboard/org-gate";
 import { Sidebar } from "@/components/dashboard/sidebar";
+import { cn } from "@/lib/utils";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const loopEditor =
+    pathname.startsWith("/loops/") && pathname !== "/loops";
 
   return (
     <div className="flex min-h-screen bg-white text-zinc-900">
@@ -23,7 +26,14 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         </header>
         <main className="flex min-w-0 flex-1 flex-col">
           <OrgGate>
-            <div className="mx-auto w-full max-w-7xl flex-1 px-6 py-6">
+            <div
+              className={cn(
+                "mx-auto w-full flex-1",
+                loopEditor
+                  ? "max-w-none px-0 py-0"
+                  : "max-w-7xl px-6 py-6",
+              )}
+            >
               {children}
             </div>
           </OrgGate>

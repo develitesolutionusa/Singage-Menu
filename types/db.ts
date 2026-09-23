@@ -20,6 +20,12 @@ export type DesignMenuItem = { name: string; price?: string };
 export type DesignSection = { title: string; items?: DesignMenuItem[] };
 
 export type DesignData = {
+  /** Smart Template flag — professionally authored, content-editable. */
+  smart?: boolean;
+  layoutLocked?: boolean;
+  editableFields?: unknown[];
+  contentValues?: Record<string, string>;
+  elements?: unknown[];
   layout?: string;
   theme?: {
     bg?: string;
@@ -49,6 +55,7 @@ export type Template = {
   orientation: Orientation;
   default_duration_seconds: number;
   design_data: DesignData;
+  version: number;
   sort_order: number;
   is_published: boolean;
   created_at: string;
@@ -105,7 +112,11 @@ export type LoopItem = {
   library_item_id: string | null;
   item_type: LoopItemType;
   source_template_id: string | null;
+  template_version: number | null;
   design_data: DesignData | null;
+  content_data: DesignData | null;
+  overrides: Record<string, unknown>;
+  publish_status: "draft" | "saved" | "published";
   slide_name: string | null;
   position: number;
   duration_seconds: number;
@@ -249,7 +260,11 @@ type Tables = {
       library_item_id: string | null;
       item_type: LoopItemType;
       source_template_id: string | null;
+      template_version: number | null;
       design_data: DesignData | null;
+      content_data: DesignData | null;
+      overrides: Record<string, unknown>;
+      publish_status: "draft" | "saved" | "published";
       slide_name: string | null;
       position: number;
       duration_seconds: number;
@@ -262,7 +277,11 @@ type Tables = {
       library_item_id?: string | null;
       item_type?: LoopItemType;
       source_template_id?: string | null;
+      template_version?: number | null;
       design_data?: DesignData | null;
+      content_data?: DesignData | null;
+      overrides?: Record<string, unknown>;
+      publish_status?: "draft" | "saved" | "published";
       slide_name?: string | null;
       position?: number;
       duration_seconds?: number;
@@ -275,7 +294,11 @@ type Tables = {
       library_item_id: string | null;
       item_type: LoopItemType;
       source_template_id: string | null;
+      template_version: number | null;
       design_data: DesignData | null;
+      content_data: DesignData | null;
+      overrides: Record<string, unknown>;
+      publish_status: "draft" | "saved" | "published";
       slide_name: string | null;
       position: number;
       duration_seconds: number;
@@ -295,6 +318,7 @@ type Tables = {
       orientation?: Orientation;
       default_duration_seconds?: number;
       design_data?: DesignData;
+      version?: number;
       sort_order?: number;
       is_published?: boolean;
       created_at?: string;

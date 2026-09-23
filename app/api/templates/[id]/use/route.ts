@@ -3,7 +3,7 @@ import { z } from "zod";
 import { isOrgContext, requireOrg } from "@/lib/clerk";
 import { createServiceClient } from "@/lib/supabase";
 import { logActivity } from "@/lib/activity";
-import type { DesignData } from "@/types/db";
+import { buildTemplateSlideInsert } from "@/lib/loop-slides";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -104,19 +104,16 @@ export async function POST(request: Request, { params }: Params) {
   const nextPosition =
     body.mode === "new" ? 0 : (existing?.[0]?.position ?? -1) + 1;
 
+  const insert = buildTemplateSlideInsert({
+    orgId: ctx.orgId,
+    loopId,
+    template,
+    position: nextPosition,
+  });
+
   const { data: item, error: itemError } = await supabase
     .from("loop_items")
-    .insert({
-      clerk_org_id: ctx.orgId,
-      loop_id: loopId,
-      item_type: "design",
-      library_item_id: null,
-      source_template_id: template.id,
-      design_data: (template.design_data ?? {}) as DesignData,
-      slide_name: template.name,
-      position: nextPosition,
-      duration_seconds: Number(template.default_duration_seconds) || 15,
-    })
+    .insert(insert)
     .select("*")
     .single();
 
@@ -131,8 +128,8 @@ export async function POST(request: Request, { params }: Params) {
     orgId: ctx.orgId,
     actorId: ctx.userId,
     action: createdNew
-      ? `Added template "${template.name}" as first slide`
-      : `Added template "${template.name}" to a loop`,
+      ? `Added Smart Template "${template.name}" as first slide`
+      : `Added Smart Template "${template.name}" to a loop`,
     entityType: "loop",
     entityId: loopId,
     metadata: { templateId: template.id, loopItemId: item.id },
