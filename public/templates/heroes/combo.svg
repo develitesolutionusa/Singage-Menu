@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
+  <rect width="400" height="300" rx="16" fill="#1e1b4b"/>
+  <circle cx="100" cy="150" r="50" fill="#818cf8" opacity="0.7"/>
+  <circle cx="200" cy="150" r="50" fill="#a5b4fc" opacity="0.7"/>
+  <circle cx="300" cy="150" r="50" fill="#818cf8" opacity="0.7"/>
+  <text x="200" y="250" text-anchor="middle" fill="#eef2ff" font-family="Arial, sans-serif" font-size="22" font-weight="700">3-in-1 Combo</text>
+</svg>

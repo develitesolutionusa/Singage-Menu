@@ -1,8 +1,13 @@
 "use client";
 
+import { DesignElementView } from "@/components/design-editor/design-element-view";
+import {
+  getArtboardSize,
+  getElements,
+} from "@/lib/design-elements";
+import { buildDynamicContext, type OrgProfile } from "@/lib/dynamic-data";
 import { cn } from "@/lib/utils";
 import type { DesignData } from "@/types/db";
-import type { OrgProfile } from "@/lib/dynamic-data";
 
 function themeOf(data: DesignData) {
   return {
@@ -18,22 +23,68 @@ export function TemplatePreview({
   data,
   className,
   compact = false,
-  orgProfile: _orgProfile,
+  orgProfile = null,
 }: {
   data: DesignData;
   className?: string;
   compact?: boolean;
-  /** Reserved for dynamic org branding in legacy layouts. */
+  /** Used to resolve restaurant dynamic bindings in canvas previews. */
   orgProfile?: OrgProfile | null;
 }) {
   const theme = themeOf(data);
   const layout = data.layout ?? "promo-hero";
+  const elements = getElements(data).filter((el) => !el.hidden);
+
+  // Prefer schema-driven canvas elements (Smart Templates) over legacy layouts.
+  if (elements.length > 0) {
+    const artboard = getArtboardSize(
+      data.orientation === "portrait" ? "portrait" : "landscape",
+    );
+    const dataContext = buildDynamicContext(data, orgProfile);
+    const sorted = [...elements].sort((a, b) => a.zIndex - b.zIndex);
+    const scale = compact ? 0.22 : 0.35;
+
+    return (
+      <div
+        className={cn("relative h-full w-full overflow-hidden", className)}
+        style={{ background: theme.bg }}
+      >
+        <div
+          className="absolute left-1/2 top-1/2 origin-center"
+          style={{
+            width: artboard.width,
+            height: artboard.height,
+            transform: `translate(-50%, -50%) scale(${scale})`,
+          }}
+        >
+          {sorted.map((el) => (
+            <div
+              key={el.id}
+              className="absolute overflow-hidden"
+              style={{
+                left: el.x,
+                top: el.y,
+                width: el.width,
+                height: el.height,
+                zIndex: el.zIndex,
+                transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+              }}
+            >
+              <DesignElementView element={el} dataContext={dataContext} />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
       className={cn(
         "relative h-full w-full overflow-hidden",
-        compact ? "text-[7px] leading-tight" : "text-[10px] leading-snug sm:text-xs",
+        compact
+          ? "text-[7px] leading-tight"
+          : "text-[10px] leading-snug sm:text-xs",
         className,
       )}
       style={{ background: theme.bg, color: theme.text }}

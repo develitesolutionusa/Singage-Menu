@@ -62,9 +62,18 @@ export type DesignElementProps = {
 
 export const FONT_FAMILIES = [
   { value: "sans", label: "Sans", css: "ui-sans-serif, system-ui, sans-serif" },
-  { value: "serif", label: "Serif", css: "ui-serif, Georgia, serif" },
+  { value: "serif", label: "Serif", css: "ui-serif, Georgia, 'Times New Roman', serif" },
   { value: "mono", label: "Mono", css: "ui-monospace, SFMono-Regular, monospace" },
-  { value: "display", label: "Display", css: "Georgia, 'Times New Roman', serif" },
+  {
+    value: "display",
+    label: "Display",
+    css: "Georgia, 'Times New Roman', serif",
+  },
+  {
+    value: "script",
+    label: "Script",
+    css: "'Segoe Script', 'Brush Script MT', 'Apple Chancery', cursive",
+  },
 ] as const;
 
 export function fontFamilyCss(value?: string): string {

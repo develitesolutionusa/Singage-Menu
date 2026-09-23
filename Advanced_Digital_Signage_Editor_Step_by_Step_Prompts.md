@@ -825,7 +825,7 @@ UX review:
 -   Error states
 -   Success feedback
 -   Responsive editor layout
-
+                                
 Performance review:
 
 -   Large templates

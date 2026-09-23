@@ -34,7 +34,10 @@ import {
   type DesignElementProps,
 } from "@/lib/design-elements";
 import {
+  applyContentValues,
   ensureSmartDesign,
+  getContentValues,
+  getEditableFields,
   isSmartTemplate,
   setContentField,
 } from "@/lib/smart-templates";
@@ -187,20 +190,21 @@ export function DesignEditorShell({
 
   const handleSmartFieldChange = useCallback(
     (fieldId: string, value: string) => {
-      const nextData = setContentField(workingDesign, fieldId, value);
-      const nextElements = getElements(nextData);
-      setWorkingDesign(nextData);
-      // Live update without flooding undo history (typing).
-      setHistory((prev) => ({
-        ...prev,
-        present: {
-          ...prev.present,
-          elements: cloneElements(nextElements),
-        },
-      }));
-      notifyParent(nextData);
+      setWorkingDesign((prev) => {
+        const nextData = setContentField(prev, fieldId, value);
+        const nextElements = getElements(nextData);
+        setHistory((historyPrev) => ({
+          ...historyPrev,
+          present: {
+            ...historyPrev.present,
+            elements: cloneElements(nextElements),
+          },
+        }));
+        notifyParent(nextData);
+        return nextData;
+      });
     },
-    [notifyParent, workingDesign],
+    [notifyParent],
   );
 
   const handlePatchElement = useCallback(
@@ -222,8 +226,28 @@ export function DesignEditorShell({
         };
       });
 
+      // Keep Smart contentValues in sync when editing bound props on canvas.
+      let nextData = withElements(workingDesign, nextElements);
+      if (patch.props && isSmartTemplate(workingDesign)) {
+        const values = { ...getContentValues(workingDesign) };
+        for (const field of getEditableFields(workingDesign)) {
+          const hit = field.bindings.find((b) => b.elementId === id);
+          if (!hit) continue;
+          const raw = patch.props[hit.prop];
+          if (typeof raw === "string") values[field.id] = raw;
+        }
+        nextData = applyContentValues(nextData, values);
+      }
+
       if (useHistory) {
-        commit(nextElements, selectedIds);
+        setHistory((prev) =>
+          pushHistory(prev, {
+            elements: cloneElements(getElements(nextData)),
+            selectedIds,
+          }),
+        );
+        setWorkingDesign(nextData);
+        notifyParent(nextData);
         return;
       }
 
@@ -231,14 +255,13 @@ export function DesignEditorShell({
         ...prev,
         present: {
           ...prev.present,
-          elements: nextElements,
+          elements: getElements(nextData),
         },
       }));
-      const nextData = withElements(workingDesign, nextElements);
       setWorkingDesign(nextData);
       notifyParent(nextData);
     },
-    [commit, elements, notifyParent, selectedIds, workingDesign],
+    [elements, notifyParent, selectedIds, workingDesign],
   );
 
   const setElementsLive = useCallback((nextElements: DesignElement[]) => {

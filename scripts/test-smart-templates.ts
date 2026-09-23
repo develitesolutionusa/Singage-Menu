@@ -22,7 +22,7 @@ const titled = setContentField(next, "title", "Tonight Only");
 if (getElements(titled).find((e) => e.id === "el_title")?.props.text !== "Tonight Only") {
   throw new Error("title not synced");
 }
-if (titled.layoutLocked !== false) throw new Error("layout should stay unlocked by default");
+if (titled.layoutLocked !== true) throw new Error("layout should stay locked for Smart Templates");
 
 console.log("✓ Smart Template schema + live content sync OK");
 console.log(`  ${Object.keys(all).length} restaurant templates`);

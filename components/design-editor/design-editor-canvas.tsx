@@ -20,7 +20,6 @@ import {
   snapWithThreshold,
 } from "@/lib/design-elements";
 import {
-  buildDynamicContext,
   type OrgProfile,
 } from "@/lib/dynamic-data";
 import { cn } from "@/lib/utils";
@@ -89,7 +88,6 @@ export function DesignEditorCanvas({
   orgProfile?: OrgProfile | null;
 }) {
   const artboard = getArtboardSize(orientation);
-  const dataContext = buildDynamicContext(designData, orgProfile);
   const stageRef = useRef<HTMLDivElement>(null);
   const artboardRef = useRef<HTMLDivElement>(null);
   const [guides, setGuides] = useState<AlignGuide[]>([]);
@@ -447,8 +445,12 @@ export function DesignEditorCanvas({
                     <DesignElementView
                       element={element}
                       selected={isSelected}
-                      dataContext={dataContext}
-                      showDynamicBadge
+                      // Editor shows authored props directly. Dynamic resolution
+                      // runs on the player / preview — resolving here overwrites
+                      // live Smart Field edits with stale contentValues.
+                      showDynamicBadge={Boolean(
+                        element.props.dataSource && element.props.field,
+                      )}
                     />
                   </div>
                 </div>

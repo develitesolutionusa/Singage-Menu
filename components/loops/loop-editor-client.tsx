@@ -520,6 +520,7 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
 
   function buildItemsPayload(
     publishTargetId?: string | null,
+    sourceItems: LoopItem[] = itemsRef.current,
   ): Array<{
     id: string;
     position: number;
@@ -528,7 +529,7 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
     slideName?: string;
     publishStatus?: PublishStatus;
   }> {
-    return items.map((item, index) => {
+    return sourceItems.map((item, index) => {
       const base = {
         id: item.id,
         position: index,
@@ -536,12 +537,12 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
       };
       if (item.item_type !== "design") return base;
 
-      const publishingThis = publishTargetId != null && item.id === publishTargetId;
+      const publishingThis =
+        publishTargetId != null && item.id === publishTargetId;
       let publishStatus: PublishStatus = "saved";
       if (publishingThis) {
         publishStatus = "published";
       } else if (item.publish_status === "published") {
-        // Keep already-published slides published when saving other slides.
         publishStatus = "published";
       } else {
         publishStatus = "saved";
@@ -568,6 +569,7 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
     setSaving(true);
     setError(null);
     try {
+      const snapshot = itemsRef.current;
       const metaRes = await fetch(`/api/loops/${loopId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -582,24 +584,34 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
       const itemsRes = await fetch(`/api/loops/${loopId}/items`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: buildItemsPayload(null) }),
+        body: JSON.stringify({
+          items: buildItemsPayload(null, snapshot),
+        }),
       });
       const itemsJson = await itemsRes.json();
       if (!itemsRes.ok) throw new Error(itemsJson.error ?? "Could not save items");
 
-      setItems((prev) =>
-        prev.map((item) =>
-          item.item_type === "design" && item.publish_status !== "published"
-            ? { ...item, publish_status: "saved" }
-            : item,
-        ),
+      const nextItems = snapshot.map((item) =>
+        item.item_type === "design" && item.publish_status !== "published"
+          ? { ...item, publish_status: "saved" as PublishStatus }
+          : item,
       );
+      setItems(nextItems);
       setDesignDirty(false);
+      setBaseline({
+        name: editName.trim(),
+        orientation: editOrientation,
+        itemsKey: nextItems
+          .map((i) => `${i.id}:${i.position}:${i.duration_seconds}`)
+          .join("|"),
+      });
+      setDirty(false);
       setLastSavedAt(formatSavedClock());
       if (!options?.silent) {
         toast.success(options?.auto ? "Auto-saved" : "Loop saved");
       }
-      await load();
+      // Avoid full reload after save — it was wiping in-progress editor state
+      // and retriggering auto-save in a loop.
       return true;
     } catch (e) {
       const message = e instanceof Error ? e.message : "Could not save";
@@ -616,7 +628,7 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
       toast.message("Select a design slide to publish");
       return;
     }
-    const item = items.find((i) => i.id === selectedId);
+    const item = itemsRef.current.find((i) => i.id === selectedId);
     if (!item || item.item_type !== "design") {
       toast.message("Select a design slide to publish");
       return;
@@ -633,6 +645,7 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
         throw new Error("Loop name is required");
       }
 
+      const snapshot = itemsRef.current;
       const metaRes = await fetch(`/api/loops/${loopId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -647,28 +660,36 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
       const itemsRes = await fetch(`/api/loops/${loopId}/items`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: buildItemsPayload(selectedId) }),
+        body: JSON.stringify({
+          items: buildItemsPayload(selectedId, snapshot),
+        }),
       });
       const itemsJson = await itemsRes.json();
       if (!itemsRes.ok) {
         throw new Error(itemsJson.error ?? "Could not publish slide");
       }
 
-      setItems((prev) =>
-        prev.map((row) =>
-          row.id === selectedId
-            ? { ...row, publish_status: "published" }
-            : row.item_type === "design" && row.publish_status !== "published"
-              ? { ...row, publish_status: "saved" }
-              : row,
-        ),
+      const nextItems = snapshot.map((row) =>
+        row.id === selectedId
+          ? { ...row, publish_status: "published" as PublishStatus }
+          : row.item_type === "design" && row.publish_status !== "published"
+            ? { ...row, publish_status: "saved" as PublishStatus }
+            : row,
       );
+      setItems(nextItems);
       setDesignDirty(false);
+      setBaseline({
+        name: editName.trim(),
+        orientation: editOrientation,
+        itemsKey: nextItems
+          .map((i) => `${i.id}:${i.position}:${i.duration_seconds}`)
+          .join("|"),
+      });
+      setDirty(false);
       setLastSavedAt(formatSavedClock());
       toast.success("Slide published", {
         description: "Players will pick up the published design on next sync.",
       });
-      await load();
     } catch (e) {
       const message = e instanceof Error ? e.message : "Could not publish";
       setError(message);
@@ -678,12 +699,13 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
     }
   }
 
+  // Debounce auto-save a bit longer so typing isn't constantly interrupted.
   useEffect(() => {
     if (!dirty || saving || publishing) return;
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
       void saveAll({ silent: true, auto: true });
-    }, 2500);
+    }, 4000);
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
