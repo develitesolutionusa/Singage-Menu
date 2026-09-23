@@ -112,18 +112,26 @@ export function ConfirmDialog({
   description,
   confirmLabel = "Delete",
   cancelLabel = "Cancel",
+  tertiaryLabel,
   busy = false,
+  busyLabel = "Working…",
+  confirmVariant = "danger",
   onConfirm,
   onCancel,
+  onTertiary,
 }: {
   open: boolean;
   title: string;
   description?: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  tertiaryLabel?: string;
   busy?: boolean;
+  busyLabel?: string;
+  confirmVariant?: "primary" | "danger";
   onConfirm: () => void;
   onCancel: () => void;
+  onTertiary?: () => void;
 }) {
   if (!open) return null;
 
@@ -155,7 +163,7 @@ export function ConfirmDialog({
             {description}
           </p>
         ) : null}
-        <div className="mt-5 flex justify-end gap-2">
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
           <Button
             type="button"
             variant="secondary"
@@ -164,13 +172,23 @@ export function ConfirmDialog({
           >
             {cancelLabel}
           </Button>
+          {tertiaryLabel && onTertiary ? (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onTertiary}
+              disabled={busy}
+            >
+              {tertiaryLabel}
+            </Button>
+          ) : null}
           <Button
             type="button"
-            variant="danger"
+            variant={confirmVariant}
             onClick={onConfirm}
             disabled={busy}
           >
-            {busy ? "Deleting…" : confirmLabel}
+            {busy ? busyLabel : confirmLabel}
           </Button>
         </div>
       </div>

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { isOrgContext, requireOrg } from "@/lib/clerk";
 import { createServiceClient } from "@/lib/supabase";
 import { logActivity } from "@/lib/activity";
-import type { DesignData } from "@/types/db";
+import { buildTemplateSlideInsert } from "@/lib/loop-slides";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -106,17 +106,14 @@ export async function POST(request: Request, { params }: Params) {
 
   const { data: item, error: itemError } = await supabase
     .from("loop_items")
-    .insert({
-      clerk_org_id: ctx.orgId,
-      loop_id: loopId,
-      item_type: "design",
-      library_item_id: null,
-      source_template_id: template.id,
-      design_data: (template.design_data ?? {}) as DesignData,
-      slide_name: template.name,
-      position: nextPosition,
-      duration_seconds: Number(template.default_duration_seconds) || 15,
-    })
+    .insert(
+      buildTemplateSlideInsert({
+        orgId: ctx.orgId,
+        loopId,
+        template,
+        position: nextPosition,
+      }),
+    )
     .select("*")
     .single();
 

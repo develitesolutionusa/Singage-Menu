@@ -505,6 +505,11 @@ export function DesignEditorCanvas({
                       new CustomEvent("design-editor:toggle-hide"),
                     );
                   }}
+                  onOpenLayers={() => {
+                    document.dispatchEvent(
+                      new CustomEvent("design-editor:open-layers"),
+                    );
+                  }}
                 />
                 {selected.length === 1 &&
                 !selected[0].locked &&

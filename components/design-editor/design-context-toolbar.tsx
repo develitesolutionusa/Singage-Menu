@@ -4,9 +4,8 @@ import {
   Copy,
   Eye,
   EyeOff,
+  Layers,
   Lock,
-  MoreHorizontal,
-  Move,
   Trash2,
   Unlock,
 } from "lucide-react";
@@ -21,6 +20,7 @@ export function DesignContextToolbar({
   onDelete,
   onToggleLock,
   onToggleHide,
+  onOpenLayers,
 }: {
   x: number;
   y: number;
@@ -30,6 +30,7 @@ export function DesignContextToolbar({
   onDelete: () => void;
   onToggleLock: () => void;
   onToggleHide: () => void;
+  onOpenLayers?: () => void;
 }) {
   return (
     <div
@@ -37,12 +38,6 @@ export function DesignContextToolbar({
       style={{ left: x, top: y }}
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <Tool
-        label="Move"
-        icon={Move}
-        onClick={() => undefined}
-        hint
-      />
       <Tool label="Duplicate" icon={Copy} onClick={onDuplicate} />
       <Tool
         label={locked ? "Unlock" : "Lock"}
@@ -55,7 +50,9 @@ export function DesignContextToolbar({
         onClick={onToggleHide}
       />
       <Tool label="Delete" icon={Trash2} onClick={onDelete} danger />
-      <Tool label="More" icon={MoreHorizontal} onClick={() => undefined} />
+      {onOpenLayers ? (
+        <Tool label="Layers" icon={Layers} onClick={onOpenLayers} />
+      ) : null}
     </div>
   );
 }
@@ -65,13 +62,11 @@ function Tool({
   icon: Icon,
   onClick,
   danger,
-  hint,
 }: {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   onClick: () => void;
   danger?: boolean;
-  hint?: boolean;
 }) {
   return (
     <button
@@ -82,7 +77,6 @@ function Tool({
       className={cn(
         "rounded-md p-1.5 text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900",
         danger && "hover:bg-red-50 hover:text-red-600",
-        hint && "cursor-grab text-zinc-400",
       )}
     >
       <Icon className="h-3.5 w-3.5" />

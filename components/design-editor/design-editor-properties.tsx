@@ -56,8 +56,13 @@ export function DesignEditorProperties({
     : null;
   const smart = isSmartTemplate(designData);
   const elementLocked = Boolean(selectedElement?.locked);
-  const editsDisabled = layoutLocked || elementLocked;
-  const canEdit = Boolean(selectedElement && onPatchElement && !editsDisabled);
+  // Layout lock protects structure (move/resize/layers); content/style stay editable.
+  const canEditContent = Boolean(
+    selectedElement && onPatchElement && !elementLocked,
+  );
+  const canEditStructure = Boolean(
+    selectedElement && onPatchElement && !layoutLocked && !elementLocked,
+  );
   const canToggleLock = Boolean(
     selectedElement && onPatchElement && !layoutLocked,
   );
@@ -131,9 +136,9 @@ export function DesignEditorProperties({
               <p className="text-xs text-zinc-500">{block.description}</p>
               {layoutLocked || elementLocked ? (
                 <p className="mt-2 rounded-md bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
-                  {layoutLocked
-                    ? "Layout locked · click Unlock in the bottom bar to edit fields"
-                    : "Element locked · set Lock to Unlocked in Advanced"}
+                  {elementLocked
+                    ? "Element locked · set Lock to Unlocked in Advanced"
+                    : "Layout locked · content editable · unlock to move/resize"}
                 </p>
               ) : null}
             </div>
@@ -142,21 +147,21 @@ export function DesignEditorProperties({
               <ContentFields
                 blockType={block.type}
                 element={selectedElement}
-                disabled={!canEdit}
+                disabled={!canEditContent}
                 onPropsChange={patchProps}
               />
             ) : null}
             {tab === "style" ? (
               <StyleFields
                 element={selectedElement}
-                disabled={!canEdit}
+                disabled={!canEditContent}
                 onPropsChange={patchProps}
               />
             ) : null}
             {tab === "advanced" ? (
               <AdvancedFields
                 element={selectedElement}
-                disabled={!canEdit}
+                disabled={!canEditStructure}
                 canToggleLock={canToggleLock}
                 layerCount={layerCount ?? 1}
                 onPatch={patchElement}

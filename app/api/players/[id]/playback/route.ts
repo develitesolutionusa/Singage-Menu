@@ -5,6 +5,7 @@ import {
   findActiveException,
   getZonedDateInfo,
 } from "@/lib/campaign-resolve";
+import { resolveSlideDesign } from "@/lib/loop-slides";
 import type { DesignData, LibraryItem, Loop } from "@/types/db";
 
 type Params = { params: Promise<{ id: string }> };
@@ -80,6 +81,10 @@ async function buildItemsForLoops(
     for (const item of group) {
       const isDesign = item.item_type === "design";
       if (isDesign) {
+        // Players only receive published design slides (draft/saved stay in editor).
+        if (item.publish_status !== "published") continue;
+        const designData = resolveSlideDesign(item);
+        if (!designData) continue;
         items.push({
           id: item.id,
           position: globalPos++,
@@ -90,7 +95,7 @@ async function buildItemsForLoops(
           mimeType: "application/json",
           url: null,
           itemType: "design",
-          designData: (item.design_data ?? null) as DesignData | null,
+          designData,
           sourceLoopId: loopId,
           orientation: loopOrientation,
         });

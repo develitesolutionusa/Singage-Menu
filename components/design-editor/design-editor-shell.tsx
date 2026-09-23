@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { EyeOff, Lock, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { DesignEditorBottomBar } from "@/components/design-editor/design-editor-bottom-bar";
 import { DesignEditorCanvas } from "@/components/design-editor/design-editor-canvas";
 import { DesignEditorLeftPanel } from "@/components/design-editor/design-editor-left-panel";
 import { DesignEditorProperties } from "@/components/design-editor/design-editor-properties";
+import { DesignLayersPanel } from "@/components/design-editor/design-layers-panel";
 import {
   DesignPreviewMode,
   type DesignPreviewSlide,
@@ -15,6 +15,7 @@ import {
   DesignEditorToolbar,
   type AutoSaveStatus,
   type EditorWorkspaceMode,
+  type PublishUiStatus,
 } from "@/components/design-editor/design-editor-toolbar";
 import type { DesignBlockType } from "@/components/design-editor/blocks";
 import type { TemplateListItem } from "@/lib/templates";
@@ -43,10 +44,10 @@ import {
   pushHistory,
   redoHistory,
   undoHistory,
+  type DesignHistorySnapshot,
   type DesignHistoryState,
 } from "@/lib/design-history";
 import type { DesignData, Orientation } from "@/types/db";
-import { cn } from "@/lib/utils";
 import { SmartTemplateBanner } from "@/components/design-editor/smart-content-panel";
 
 export function DesignEditorShell({
@@ -62,7 +63,12 @@ export function DesignEditorShell({
   lastSavedAt,
   dirty,
   saving,
+  publishing = false,
+  publishStatus = "draft",
+  canPublish = true,
   onSave,
+  onPublish,
+  onBack,
   onDesignDataChange,
   slideId,
   previewSlides,
@@ -79,11 +85,15 @@ export function DesignEditorShell({
   lastSavedAt?: string | null;
   dirty: boolean;
   saving: boolean;
+  publishing?: boolean;
+  publishStatus?: PublishUiStatus;
+  canPublish?: boolean;
   onSave: () => void;
+  onPublish: () => void;
+  onBack?: () => void;
   onDesignDataChange?: (data: DesignData) => void;
   /** When this changes, editor reloads elements from design data. */
   slideId?: string | null;
-  /** Full loop sequence for Preview Mode (player-matched playback). */
   previewSlides?: DesignPreviewSlide[];
 }) {
   const resolvedDesign = ensureSmartDesign(
@@ -123,6 +133,7 @@ export function DesignEditorShell({
   const [clipboard, setClipboard] = useState<DesignElement[]>([]);
   const [loadedSlideId, setLoadedSlideId] = useState<string | null>(null);
   const [workingDesign, setWorkingDesign] = useState<DesignData>(resolvedDesign);
+  const interactionBaselineRef = useRef<DesignHistorySnapshot | null>(null);
 
   const elements = history.present.elements;
   const selectedIds = history.present.selectedIds;
@@ -141,6 +152,7 @@ export function DesignEditorShell({
     setLoadedSlideId(id);
     setWorkingDesign(next);
     setLayoutLocked(next.layoutLocked === true);
+    interactionBaselineRef.current = null;
     setHistory(
       createHistory({
         elements: getElements(next),
@@ -178,12 +190,14 @@ export function DesignEditorShell({
       const nextData = setContentField(workingDesign, fieldId, value);
       const nextElements = getElements(nextData);
       setWorkingDesign(nextData);
-      setHistory((prev) =>
-        pushHistory(prev, {
+      // Live update without flooding undo history (typing).
+      setHistory((prev) => ({
+        ...prev,
+        present: {
+          ...prev.present,
           elements: cloneElements(nextElements),
-          selectedIds: prev.present.selectedIds,
-        }),
-      );
+        },
+      }));
       notifyParent(nextData);
     },
     [notifyParent, workingDesign],
@@ -196,7 +210,7 @@ export function DesignEditorShell({
     ) => {
       const id = selectedIds[0];
       if (!id) return;
-      const history = options?.history !== false;
+      const useHistory = options?.history !== false;
 
       const nextElements = elements.map((el) => {
         if (el.id !== id) return el;
@@ -208,7 +222,7 @@ export function DesignEditorShell({
         };
       });
 
-      if (history) {
+      if (useHistory) {
         commit(nextElements, selectedIds);
         return;
       }
@@ -227,18 +241,23 @@ export function DesignEditorShell({
     [commit, elements, notifyParent, selectedIds, workingDesign],
   );
 
-  const setElementsLive = useCallback(
-    (nextElements: DesignElement[]) => {
-      setHistory((prev) => ({
+  const setElementsLive = useCallback((nextElements: DesignElement[]) => {
+    setHistory((prev) => {
+      if (!interactionBaselineRef.current) {
+        interactionBaselineRef.current = {
+          elements: cloneElements(prev.present.elements),
+          selectedIds: [...prev.present.selectedIds],
+        };
+      }
+      return {
         ...prev,
         present: {
           ...prev.present,
           elements: nextElements,
         },
-      }));
-    },
-    [],
-  );
+      };
+    });
+  }, []);
 
   const setSelectedIds = useCallback((ids: string[]) => {
     setHistory((prev) => ({
@@ -248,15 +267,41 @@ export function DesignEditorShell({
   }, []);
 
   const handleInteractionEnd = useCallback(() => {
-    const pushed = pushHistory(history, {
-      elements: cloneElements(history.present.elements),
-      selectedIds: history.present.selectedIds,
+    setHistory((prev) => {
+      const baseline = interactionBaselineRef.current;
+      interactionBaselineRef.current = null;
+      const nextPresent = prev.present;
+
+      let nextState: DesignHistoryState;
+      if (baseline) {
+        const unchanged =
+          JSON.stringify(baseline.elements) ===
+          JSON.stringify(nextPresent.elements);
+        nextState = unchanged
+          ? prev
+          : {
+              past: [...prev.past, baseline].slice(-80),
+              present: nextPresent,
+              future: [],
+            };
+      } else {
+        nextState = pushHistory(prev, {
+          elements: cloneElements(nextPresent.elements),
+          selectedIds: nextPresent.selectedIds,
+        });
+      }
+
+      queueMicrotask(() => {
+        setWorkingDesign((wd) => {
+          const nextData = withElements(wd, nextPresent.elements);
+          notifyParent(nextData);
+          return nextData;
+        });
+      });
+
+      return nextState;
     });
-    setHistory(pushed);
-    const nextData = withElements(workingDesign, pushed.present.elements);
-    setWorkingDesign(nextData);
-    notifyParent(nextData);
-  }, [history, notifyParent, workingDesign]);
+  }, [notifyParent]);
 
   const deleteSelected = useCallback(() => {
     if (!selectedIds.length || layoutLocked) return;
@@ -272,7 +317,10 @@ export function DesignEditorShell({
       .filter((el) => !el.locked)
       .map((el) => duplicateElement(el));
     if (!copies.length) return;
-    commit([...elements, ...copies], copies.map((c) => c.id));
+    commit(
+      [...elements, ...copies],
+      copies.map((c) => c.id),
+    );
   }, [commit, elements, layoutLocked, selectedElements, selectedIds.length]);
 
   const toggleLockSelected = useCallback(() => {
@@ -321,15 +369,18 @@ export function DesignEditorShell({
     const onDel = () => deleteSelected();
     const onLock = () => toggleLockSelected();
     const onHide = () => toggleHideSelected();
+    const onLayers = () => setLayersOpen(true);
     document.addEventListener("design-editor:duplicate", onDup);
     document.addEventListener("design-editor:delete", onDel);
     document.addEventListener("design-editor:toggle-lock", onLock);
     document.addEventListener("design-editor:toggle-hide", onHide);
+    document.addEventListener("design-editor:open-layers", onLayers);
     return () => {
       document.removeEventListener("design-editor:duplicate", onDup);
       document.removeEventListener("design-editor:delete", onDel);
       document.removeEventListener("design-editor:toggle-lock", onLock);
       document.removeEventListener("design-editor:toggle-hide", onHide);
+      document.removeEventListener("design-editor:open-layers", onLayers);
     };
   }, [
     deleteSelected,
@@ -349,7 +400,11 @@ export function DesignEditorShell({
         undo();
         return;
       }
-      if (mod && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) {
+      if (
+        mod &&
+        (e.key.toLowerCase() === "y" ||
+          (e.key.toLowerCase() === "z" && e.shiftKey))
+      ) {
         e.preventDefault();
         redo();
         return;
@@ -364,7 +419,10 @@ export function DesignEditorShell({
         if (!clipboard.length || layoutLocked) return;
         e.preventDefault();
         const copies = clipboard.map((el) => duplicateElement(el));
-        commit([...elements, ...copies], copies.map((c) => c.id));
+        commit(
+          [...elements, ...copies],
+          copies.map((c) => c.id),
+        );
         return;
       }
       if (mod && e.key.toLowerCase() === "d") {
@@ -444,27 +502,31 @@ export function DesignEditorShell({
     });
   }
 
-  function handlePublish() {
-    toast.message("Publish is not wired yet", {
-      description: "Publishing connects in a later step of the Design Editor plan.",
-    });
-  }
-
-  const layers = useMemo(
-    () =>
-      [...elements]
-        .sort((a, b) => b.zIndex - a.zIndex)
-        .map((el) => ({
-          id: el.id,
-          name: el.name,
-          blockType: el.type,
-          locked: el.locked,
-          hidden: el.hidden,
-        })),
-    [elements],
-  );
-
   const canMutate = selectedElements.some((el) => !el.locked) && !layoutLocked;
+
+  const resolvedPreviewSlides = useMemo((): DesignPreviewSlide[] => {
+    if (previewSlides && previewSlides.length > 0) return previewSlides;
+    return [
+      {
+        id: slideId ?? "current",
+        name: slideName || "Untitled slide",
+        durationSeconds: 10,
+        slide: {
+          kind: "design",
+          designData: withElements(workingDesign, elements),
+          orientation,
+          name: slideName,
+        },
+      },
+    ];
+  }, [
+    elements,
+    orientation,
+    previewSlides,
+    slideId,
+    slideName,
+    workingDesign,
+  ]);
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] min-h-[640px] flex-col overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 shadow-sm">
@@ -477,14 +539,18 @@ export function DesignEditorShell({
         onModeChange={onModeChange}
         autoSaveStatus={autoSaveStatus}
         lastSavedAt={lastSavedAt}
+        publishStatus={publishStatus}
         canUndo={history.past.length > 0}
         canRedo={history.future.length > 0}
         onUndo={undo}
         onRedo={redo}
         onPreview={() => setPreviewOpen(true)}
         onSave={onSave}
-        onPublish={handlePublish}
+        onPublish={onPublish}
+        onBack={onBack}
+        canPublish={canPublish}
         saving={saving}
+        publishing={publishing}
         dirty={dirty}
       />
 
@@ -493,6 +559,8 @@ export function DesignEditorShell({
           selectedBlockType={primarySelected?.type ?? null}
           onSelectBlock={handleSelectBlock}
           onSelectTemplate={handleSelectTemplate}
+          layoutLocked={layoutLocked}
+          canAddBlocks={!layoutLocked}
         />
 
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
@@ -521,52 +589,15 @@ export function DesignEditorShell({
             interactionLocked={layoutLocked}
           />
 
-          {layersOpen ? (
-            <div className="absolute bottom-3 left-3 z-20 w-64 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-xl">
-              <div className="flex items-center justify-between border-b border-zinc-100 px-3 py-2">
-                <p className="text-xs font-semibold text-zinc-800">Layers</p>
-                <button
-                  type="button"
-                  className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
-                  onClick={() => setLayersOpen(false)}
-                  aria-label="Close layers"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <ul className="max-h-64 space-y-0.5 overflow-y-auto p-2">
-                {layers.length === 0 ? (
-                  <li className="px-2 py-6 text-center text-xs text-zinc-500">
-                    Drop blocks onto the canvas to create layers.
-                  </li>
-                ) : (
-                  layers.map((layer) => (
-                    <li key={layer.id}>
-                      <button
-                        type="button"
-                        className={cn(
-                          "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-zinc-50",
-                          selectedIds.includes(layer.id) &&
-                            "bg-blue-50 text-blue-800",
-                        )}
-                        onClick={() => setSelectedIds([layer.id])}
-                      >
-                        <span className="min-w-0 flex-1 truncate font-medium">
-                          {layer.name}
-                        </span>
-                        {layer.locked ? (
-                          <Lock className="h-3 w-3 text-zinc-400" />
-                        ) : null}
-                        {layer.hidden ? (
-                          <EyeOff className="h-3 w-3 text-zinc-400" />
-                        ) : null}
-                      </button>
-                    </li>
-                  ))
-                )}
-              </ul>
-            </div>
-          ) : null}
+          <DesignLayersPanel
+            open={layersOpen}
+            onClose={() => setLayersOpen(false)}
+            elements={elements}
+            selectedIds={selectedIds}
+            layoutLocked={layoutLocked}
+            onSelectIds={setSelectedIds}
+            onCommitElements={(next) => commit(next, selectedIds)}
+          />
         </div>
 
         <DesignEditorProperties
@@ -617,10 +648,14 @@ export function DesignEditorShell({
         }}
         zoom={zoom}
         onZoomIn={() =>
-          setZoom((z) => clamp(Number((z + ZOOM_STEP).toFixed(2)), ZOOM_MIN, ZOOM_MAX))
+          setZoom((z) =>
+            clamp(Number((z + ZOOM_STEP).toFixed(2)), ZOOM_MIN, ZOOM_MAX),
+          )
         }
         onZoomOut={() =>
-          setZoom((z) => clamp(Number((z - ZOOM_STEP).toFixed(2)), ZOOM_MIN, ZOOM_MAX))
+          setZoom((z) =>
+            clamp(Number((z - ZOOM_STEP).toFixed(2)), ZOOM_MIN, ZOOM_MAX),
+          )
         }
         onFit={() => {
           setZoom(1);
@@ -635,44 +670,14 @@ export function DesignEditorShell({
         canMutate={canMutate}
       />
 
-      {previewOpen ? (
-        <DesignPreviewMode
-          open={previewOpen}
-          onClose={() => setPreviewOpen(false)}
-          title={slideName || "Preview"}
-          defaultOrientation={orientation}
-          initialSlideId={slideId}
-          slides={(() => {
-            const liveDesign = withElements(workingDesign, elements);
-            const liveSlide: DesignPreviewSlide = {
-              id: slideId ?? "__current__",
-              name: slideName || "Untitled slide",
-              durationSeconds: 10,
-              slide: {
-                kind: "design",
-                designData: liveDesign,
-                orientation,
-                name: slideName,
-              },
-            };
-            if (!previewSlides?.length) return [liveSlide];
-            return previewSlides.map((s) =>
-              slideId && s.id === slideId
-                ? {
-                    ...s,
-                    name: slideName || s.name,
-                    slide: {
-                      kind: "design" as const,
-                      designData: liveDesign,
-                      orientation,
-                      name: slideName || s.name,
-                    },
-                  }
-                : s,
-            );
-          })()}
-        />
-      ) : null}
+      <DesignPreviewMode
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        slides={resolvedPreviewSlides}
+        initialSlideId={slideId}
+        defaultOrientation={orientation}
+        title={slideName || "Preview"}
+      />
     </div>
   );
 }

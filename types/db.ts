@@ -118,6 +118,8 @@ export type LoopItem = {
   duration_seconds: number;
   created_at: string;
   library_item?: LibraryItem | null;
+  /** Enriched by GET /api/loops/:id/items — not a DB column. */
+  template_version_status?: import("@/lib/template-versioning").TemplateVersionStatus | null;
 };
 
 export type Player = {

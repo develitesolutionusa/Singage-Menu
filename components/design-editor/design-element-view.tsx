@@ -7,17 +7,29 @@ import {
   type DesignElement,
   type DesignShadow,
 } from "@/lib/design-elements";
+import {
+  hasDynamicBinding,
+  resolveElementProps,
+  type DynamicDataContext,
+} from "@/lib/dynamic-data";
 import { cn } from "@/lib/utils";
 
 export function DesignElementView({
   element,
   selected,
+  dataContext,
+  showDynamicBadge = false,
 }: {
   element: DesignElement;
   selected?: boolean;
+  dataContext?: DynamicDataContext | null;
+  showDynamicBadge?: boolean;
 }) {
   const def = getBlockDefinition(element.type);
-  const props = element.props;
+  const rawProps = element.props;
+  const props = dataContext
+    ? resolveElementProps(rawProps, dataContext)
+    : rawProps;
   const bg = props.background ?? "transparent";
   const color = props.color ?? "#111827";
   const radius = props.borderRadius ?? 8;
@@ -29,11 +41,12 @@ export function DesignElementView({
   const padding = props.padding ?? 0;
   const margin = props.margin ?? 0;
   const fontFamily = fontFamilyCss(props.fontFamily);
+  const showBadge = showDynamicBadge && hasDynamicBinding(rawProps);
 
   return (
     <div
       className={cn(
-        "box-border h-full w-full overflow-hidden",
+        "relative box-border h-full w-full overflow-hidden",
         selected && "ring-0",
         props.featured && "ring-2 ring-amber-400/80",
       )}
@@ -55,6 +68,12 @@ export function DesignElementView({
           props.letterSpacing != null ? `${props.letterSpacing}px` : undefined,
       }}
     >
+      {showBadge ? (
+        <span className="pointer-events-none absolute right-1 top-1 z-10 rounded bg-teal-600/90 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white">
+          Dyn
+        </span>
+      ) : null}
+
       {element.type === "text" ? (
         <div
           className="flex h-full w-full items-center whitespace-pre-wrap"

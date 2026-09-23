@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import type { DesignData } from "@/types/db";
+import type { OrgProfile } from "@/lib/dynamic-data";
 
 function themeOf(data: DesignData) {
   return {
@@ -17,10 +18,13 @@ export function TemplatePreview({
   data,
   className,
   compact = false,
+  orgProfile: _orgProfile,
 }: {
   data: DesignData;
   className?: string;
   compact?: boolean;
+  /** Reserved for dynamic org branding in legacy layouts. */
+  orgProfile?: OrgProfile | null;
 }) {
   const theme = themeOf(data);
   const layout = data.layout ?? "promo-hero";

@@ -2,9 +2,14 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { isOrgContext, requireOrg, requirePermission } from "@/lib/clerk";
 import { authorizeDesignDataUpdate } from "@/lib/design-auth";
+import {
+  formatPublishValidationError,
+  validateDesignForPublish,
+} from "@/lib/design-publish-validation";
 import { createServiceClient } from "@/lib/supabase";
 import { logActivity } from "@/lib/activity";
-import type { DesignData } from "@/types/db";
+import { buildTemplateVersionStatus } from "@/lib/template-versioning";
+import type { DesignData, LoopItem, Orientation, Template } from "@/types/db";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -22,6 +27,8 @@ const reorderSchema = z.object({
       contentData: z.record(z.string(), z.unknown()).optional(),
       designData: z.record(z.string(), z.unknown()).optional(),
       slideName: z.string().trim().min(1).max(120).optional(),
+      /** Persist as saved when omitted; draft is only for in-editor unsaved state. */
+      publishStatus: z.enum(["draft", "saved", "published"]).optional(),
     }),
   ),
 });
@@ -55,9 +62,46 @@ export async function GET(_request: Request, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  const rows = (items ?? []) as LoopItem[];
+  const templateIds = Array.from(
+    new Set(
+      rows
+        .map((row) => row.source_template_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+
+  const mastersById = new Map<
+    string,
+    Pick<Template, "id" | "name" | "version">
+  >();
+  if (templateIds.length > 0) {
+    const { data: masters, error: mastersError } = await supabase
+      .from("templates")
+      .select("id, name, version")
+      .in("id", templateIds);
+
+    if (mastersError) {
+      return NextResponse.json({ error: mastersError.message }, { status: 500 });
+    }
+    for (const master of masters ?? []) {
+      mastersById.set(master.id, master);
+    }
+  }
+
+  const enriched = rows.map((row) => ({
+    ...row,
+    template_version_status: buildTemplateVersionStatus({
+      item: row,
+      master: row.source_template_id
+        ? (mastersById.get(row.source_template_id) ?? null)
+        : null,
+    }),
+  }));
+
   return NextResponse.json({
     loop,
-    items: items ?? [],
+    items: enriched,
     permissions: ctx.permissions,
   });
 }
@@ -148,7 +192,7 @@ export async function PATCH(request: Request, { params }: Params) {
 
   const { data: loop } = await supabase
     .from("loops")
-    .select("id")
+    .select("id, orientation, name")
     .eq("clerk_org_id", ctx.orgId)
     .eq("id", id)
     .single();
@@ -157,15 +201,25 @@ export async function PATCH(request: Request, { params }: Params) {
     return NextResponse.json({ error: "Loop not found" }, { status: 404 });
   }
 
-  const designItemIds = body.items
-    .filter((item) => item.contentData != null || item.designData != null)
-    .map((item) => item.id);
+  const publishingItems = body.items.filter(
+    (item) => item.publishStatus === "published",
+  );
+
+  const designItemIds = Array.from(
+    new Set([
+      ...body.items
+        .filter((item) => item.contentData != null || item.designData != null)
+        .map((item) => item.id),
+      ...publishingItems.map((item) => item.id),
+    ]),
+  );
 
   const previousById = new Map<string, DesignData | null>();
+  const previousStatusById = new Map<string, string>();
   if (designItemIds.length > 0) {
     const { data: existingRows, error: existingError } = await supabase
       .from("loop_items")
-      .select("id, design_data, content_data")
+      .select("id, design_data, content_data, slide_name, publish_status")
       .eq("clerk_org_id", ctx.orgId)
       .eq("loop_id", id)
       .in("id", designItemIds);
@@ -184,8 +238,22 @@ export async function PATCH(request: Request, { params }: Params) {
           (row.design_data as DesignData | null) ??
           null,
       );
+      previousStatusById.set(row.id, row.publish_status ?? "draft");
     }
   }
+
+  const newlyPublishing = publishingItems.filter(
+    (item) => previousStatusById.get(item.id) !== "published",
+  );
+  if (newlyPublishing.length > 0) {
+    const denied = requirePermission(ctx, "publish");
+    if (denied) return denied;
+  }
+
+  let publishedCount = 0;
+  const orientation = (loop.orientation === "portrait"
+    ? "portrait"
+    : "landscape") as Orientation;
 
   for (const item of body.items) {
     const update: {
@@ -218,9 +286,50 @@ export async function PATCH(request: Request, { params }: Params) {
           { status: 403 },
         );
       }
+
+      const nextStatus = item.publishStatus ?? "saved";
+      if (nextStatus === "published") {
+        const validation = validateDesignForPublish(authorized.data, {
+          orientation,
+          slideName: item.slideName,
+        });
+        if (!validation.ok) {
+          return NextResponse.json(
+            {
+              error: formatPublishValidationError(validation),
+              issues: validation.issues,
+            },
+            { status: 400 },
+          );
+        }
+        if (previousStatusById.get(item.id) !== "published") {
+          publishedCount += 1;
+        }
+      }
+
       update.content_data = authorized.data;
       update.design_data = authorized.data;
-      update.publish_status = "saved";
+      update.publish_status = nextStatus;
+    } else if (item.publishStatus != null) {
+      // Status-only updates (e.g. publish already-persisted design)
+      if (item.publishStatus === "published") {
+        const existing = previousById.get(item.id);
+        const validation = validateDesignForPublish(existing ?? null, {
+          orientation,
+          slideName: item.slideName,
+        });
+        if (!validation.ok) {
+          return NextResponse.json(
+            {
+              error: formatPublishValidationError(validation),
+              issues: validation.issues,
+            },
+            { status: 400 },
+          );
+        }
+        publishedCount += 1;
+      }
+      update.publish_status = item.publishStatus;
     }
 
     if (item.slideName != null) {
@@ -239,7 +348,26 @@ export async function PATCH(request: Request, { params }: Params) {
     }
   }
 
-  return NextResponse.json({ ok: true });
+  // Touch the loop so players subscribed to `loops` also refresh playback.
+  if (publishedCount > 0 || designItemIds.length > 0) {
+    await supabase
+      .from("loops")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("clerk_org_id", ctx.orgId)
+      .eq("id", id);
+  }
+
+  if (publishedCount > 0) {
+    await logActivity({
+      orgId: ctx.orgId,
+      actorId: ctx.userId,
+      action: `Published ${publishedCount} slide(s) on loop "${loop.name}"`,
+      entityType: "loop",
+      entityId: id,
+    });
+  }
+
+  return NextResponse.json({ ok: true, publishedCount });
 }
 
 export async function DELETE(request: Request, { params }: Params) {

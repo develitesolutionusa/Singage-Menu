@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   DndContext,
@@ -21,7 +21,6 @@ import {
   ChevronLeft,
   Folder,
   GripVertical,
-  Maximize2,
   Pause,
   Play,
   SkipForward,
@@ -36,12 +35,16 @@ import {
   Select,
 } from "@/components/ui";
 import { DesignEditorShell } from "@/components/design-editor/design-editor-shell";
-import { DesignPreviewMode } from "@/components/design-editor/design-preview-mode";
-import type { EditorWorkspaceMode } from "@/components/design-editor/design-editor-toolbar";
-import { PlaybackSlide } from "@/components/player/playback-slide";
+import type { DesignPreviewSlide } from "@/components/design-editor/design-preview-mode";
+import type {
+  AutoSaveStatus,
+  EditorWorkspaceMode,
+  PublishUiStatus,
+} from "@/components/design-editor/design-editor-toolbar";
+import { TemplateVersionBanner } from "@/components/loops/template-version-banner";
 import { TemplatePreview } from "@/components/templates/template-preview";
 import { resolveSlideDesign } from "@/lib/loop-slides";
-import { loopItemsToPreviewSlides } from "@/lib/preview-slides";
+import type { TemplatePermissionSet } from "@/lib/template-permissions";
 import { cn, formatBytes, formatDuration } from "@/lib/utils";
 import type {
   DesignData,
@@ -50,6 +53,7 @@ import type {
   Loop,
   LoopItem,
   Orientation,
+  PublishStatus,
 } from "@/types/db";
 
 type PathSegment = { id: string; name: string };
@@ -182,18 +186,29 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
   const [deleting, setDeleting] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
-  const [fullscreenPreview, setFullscreenPreview] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [workspaceMode, setWorkspaceMode] =
     useState<EditorWorkspaceMode>("timeline");
   const [designDirty, setDesignDirty] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [permissions, setPermissions] = useState<TemplatePermissionSet | null>(
+    null,
+  );
   const [baseline, setBaseline] = useState<{
     name: string;
     orientation: Orientation;
     itemsKey: string;
   } | null>(null);
 
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const itemsRef = useRef(items);
+  const designDirtyRef = useRef(designDirty);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const folderId = path.length ? path[path.length - 1].id : null;
+
+  itemsRef.current = items;
+  designDirtyRef.current = designDirty;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -207,48 +222,76 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
     [items],
   );
 
-  const load = useCallback(async () => {
-    setError(null);
-    try {
-      const [loopRes, libRes, foldersRes] = await Promise.all([
-        fetch(`/api/loops/${loopId}/items`),
-        fetch("/api/library?folderId=all&sort=name&order=asc"),
-        fetch("/api/library/folders?parentId=all"),
-      ]);
-      const loopJson = await loopRes.json();
-      const libJson = await libRes.json();
-      const foldersJson = await foldersRes.json();
-      if (!loopRes.ok) throw new Error(loopJson.error);
-      if (!libRes.ok) throw new Error(libJson.error);
-      if (!foldersRes.ok) throw new Error(foldersJson.error);
+  const load = useCallback(
+    async (options?: { preserveUnsavedDesign?: boolean }) => {
+      setError(null);
+      try {
+        const [loopRes, libRes, foldersRes] = await Promise.all([
+          fetch(`/api/loops/${loopId}/items`),
+          fetch("/api/library?folderId=all&sort=name&order=asc"),
+          fetch("/api/library/folders?parentId=all"),
+        ]);
+        const loopJson = await loopRes.json();
+        const libJson = await libRes.json();
+        const foldersJson = await foldersRes.json();
+        if (!loopRes.ok) throw new Error(loopJson.error);
+        if (!libRes.ok) throw new Error(libJson.error);
+        if (!foldersRes.ok) throw new Error(foldersJson.error);
 
-      const nextItems: LoopItem[] = loopJson.items ?? [];
-      const nextName = loopJson.loop?.name ?? "";
-      const nextOrientation: Orientation =
-        loopJson.loop?.orientation ?? "landscape";
+        let nextItems: LoopItem[] = loopJson.items ?? [];
+        const preserve =
+          options?.preserveUnsavedDesign && designDirtyRef.current;
+        if (preserve) {
+          const localById = new Map(
+            itemsRef.current.map((item) => [item.id, item]),
+          );
+          nextItems = nextItems.map((serverItem) => {
+            const local = localById.get(serverItem.id);
+            if (!local || local.item_type !== "design") return serverItem;
+            return {
+              ...serverItem,
+              content_data: local.content_data,
+              design_data: local.design_data,
+              slide_name: local.slide_name,
+              publish_status: local.publish_status,
+            };
+          });
+        }
 
-      setLoop(loopJson.loop);
-      setEditName(nextName);
-      setEditOrientation(nextOrientation);
-      setItems(nextItems);
-      setLibrary(libJson.items ?? []);
-      setFolders(foldersJson.folders ?? []);
-      setBaseline({
-        name: nextName,
-        orientation: nextOrientation,
-        itemsKey: nextItems
-          .map((i) => `${i.id}:${i.position}:${i.duration_seconds}`)
-          .join("|"),
-      });
-      setDirty(false);
-      setSelectedId((prev) => {
-        if (prev && nextItems.some((i) => i.id === prev)) return prev;
-        return nextItems[0]?.id ?? null;
-      });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load loop");
-    }
-  }, [loopId]);
+        const nextName = loopJson.loop?.name ?? "";
+        const nextOrientation: Orientation =
+          loopJson.loop?.orientation ?? "landscape";
+
+        setLoop(loopJson.loop);
+        setEditName(nextName);
+        setEditOrientation(nextOrientation);
+        setItems(nextItems);
+        setLibrary(libJson.items ?? []);
+        setFolders(foldersJson.folders ?? []);
+        if (loopJson.permissions) {
+          setPermissions(loopJson.permissions as TemplatePermissionSet);
+        }
+        setBaseline({
+          name: nextName,
+          orientation: nextOrientation,
+          itemsKey: nextItems
+            .map((i) => `${i.id}:${i.position}:${i.duration_seconds}`)
+            .join("|"),
+        });
+        if (!preserve) {
+          setDirty(false);
+          setDesignDirty(false);
+        }
+        setSelectedId((prev) => {
+          if (prev && nextItems.some((i) => i.id === prev)) return prev;
+          return nextItems[0]?.id ?? null;
+        });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load loop");
+      }
+    },
+    [loopId],
+  );
 
   useEffect(() => {
     void load();
@@ -312,11 +355,9 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
 
   useEffect(() => {
     if (!playing || !selectedItem) return;
-    if (
-      selectedItem.item_type !== "design" &&
-      selectedItem.library_item?.file_type === "video"
-    ) {
-      // Video advance is handled by PlaybackSlide onVideoEnded
+    const media = selectedItem.library_item;
+    if (media?.file_type === "video") {
+      void videoRef.current?.play().catch(() => undefined);
       return;
     }
     const ms = Math.max(1, Number(selectedItem.duration_seconds) || 1) * 1000;
@@ -380,7 +421,7 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
       return;
     }
     toast.success("Asset added to loop");
-    await load();
+    await load({ preserveUnsavedDesign: true });
     if (json.item?.id) setSelectedId(json.item.id);
   }
 
@@ -399,7 +440,7 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
       return;
     }
     toast.success("Item removed from loop");
-    await load();
+    await load({ preserveUnsavedDesign: true });
   }
 
   async function confirmDeleteLoop() {
@@ -429,6 +470,7 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
 
   function pausePreview() {
     setPlaying(false);
+    videoRef.current?.pause();
   }
 
   function nextPreview() {
@@ -443,18 +485,6 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
       ? resolveSlideDesign(selectedItem)
       : null;
 
-  const loopPreviewSlides = useMemo(
-    () => loopItemsToPreviewSlides(items, editOrientation),
-    [items, editOrientation],
-  );
-
-  const selectedPreviewSlide = useMemo(() => {
-    if (!selectedItem) return null;
-    return (
-      loopPreviewSlides.find((s) => s.id === selectedItem.id)?.slide ?? null
-    );
-  }, [loopPreviewSlides, selectedItem]);
-
   const handleDesignDataChange = useCallback(
     (data: DesignData) => {
       if (!selectedId) return;
@@ -465,7 +495,13 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
                 ...item,
                 content_data: data,
                 design_data: data,
-                publish_status: "draft",
+                // Demote published slides to draft until Save/Publish.
+                publish_status:
+                  item.publish_status === "published"
+                    ? "draft"
+                    : item.publish_status === "saved"
+                      ? "draft"
+                      : (item.publish_status ?? "draft"),
               }
             : item,
         ),
@@ -475,12 +511,59 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
     [selectedId],
   );
 
-  async function saveAll() {
+  function formatSavedClock(date = new Date()) {
+    return date.toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+
+  function buildItemsPayload(
+    publishTargetId?: string | null,
+  ): Array<{
+    id: string;
+    position: number;
+    durationSeconds: number;
+    contentData?: DesignData;
+    slideName?: string;
+    publishStatus?: PublishStatus;
+  }> {
+    return items.map((item, index) => {
+      const base = {
+        id: item.id,
+        position: index,
+        durationSeconds: Number(item.duration_seconds),
+      };
+      if (item.item_type !== "design") return base;
+
+      const publishingThis = publishTargetId != null && item.id === publishTargetId;
+      let publishStatus: PublishStatus = "saved";
+      if (publishingThis) {
+        publishStatus = "published";
+      } else if (item.publish_status === "published") {
+        // Keep already-published slides published when saving other slides.
+        publishStatus = "published";
+      } else {
+        publishStatus = "saved";
+      }
+
+      return {
+        ...base,
+        contentData: (item.content_data ??
+          item.design_data ??
+          {}) as DesignData,
+        slideName: item.slide_name ?? undefined,
+        publishStatus,
+      };
+    });
+  }
+
+  async function saveAll(options?: { silent?: boolean; auto?: boolean }) {
     if (!editName.trim()) {
       const message = "Loop name is required";
       setError(message);
-      toast.error(message);
-      return;
+      if (!options?.silent) toast.error(message);
+      return false;
     }
     setSaving(true);
     setError(null);
@@ -499,34 +582,174 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
       const itemsRes = await fetch(`/api/loops/${loopId}/items`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: items.map((item, index) => ({
-            id: item.id,
-            position: index,
-            durationSeconds: Number(item.duration_seconds),
-            ...(item.item_type === "design"
-              ? {
-                  contentData: item.content_data ?? item.design_data ?? {},
-                  slideName: item.slide_name ?? undefined,
-                }
-              : {}),
-          })),
-        }),
+        body: JSON.stringify({ items: buildItemsPayload(null) }),
       });
       const itemsJson = await itemsRes.json();
       if (!itemsRes.ok) throw new Error(itemsJson.error ?? "Could not save items");
 
-      toast.success("Loop saved");
+      setItems((prev) =>
+        prev.map((item) =>
+          item.item_type === "design" && item.publish_status !== "published"
+            ? { ...item, publish_status: "saved" }
+            : item,
+        ),
+      );
       setDesignDirty(false);
+      setLastSavedAt(formatSavedClock());
+      if (!options?.silent) {
+        toast.success(options?.auto ? "Auto-saved" : "Loop saved");
+      }
       await load();
+      return true;
     } catch (e) {
       const message = e instanceof Error ? e.message : "Could not save";
       setError(message);
-      toast.error(message);
+      if (!options?.silent) toast.error(message);
+      return false;
     } finally {
       setSaving(false);
     }
   }
+
+  async function publishSelectedSlide() {
+    if (!selectedId) {
+      toast.message("Select a design slide to publish");
+      return;
+    }
+    const item = items.find((i) => i.id === selectedId);
+    if (!item || item.item_type !== "design") {
+      toast.message("Select a design slide to publish");
+      return;
+    }
+    if (permissions && !permissions.publish) {
+      toast.error("Publish requires org admin permission");
+      return;
+    }
+
+    setPublishing(true);
+    setError(null);
+    try {
+      if (!editName.trim()) {
+        throw new Error("Loop name is required");
+      }
+
+      const metaRes = await fetch(`/api/loops/${loopId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editName.trim(),
+          orientation: editOrientation,
+        }),
+      });
+      const metaJson = await metaRes.json();
+      if (!metaRes.ok) throw new Error(metaJson.error ?? "Could not save loop");
+
+      const itemsRes = await fetch(`/api/loops/${loopId}/items`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: buildItemsPayload(selectedId) }),
+      });
+      const itemsJson = await itemsRes.json();
+      if (!itemsRes.ok) {
+        throw new Error(itemsJson.error ?? "Could not publish slide");
+      }
+
+      setItems((prev) =>
+        prev.map((row) =>
+          row.id === selectedId
+            ? { ...row, publish_status: "published" }
+            : row.item_type === "design" && row.publish_status !== "published"
+              ? { ...row, publish_status: "saved" }
+              : row,
+        ),
+      );
+      setDesignDirty(false);
+      setLastSavedAt(formatSavedClock());
+      toast.success("Slide published", {
+        description: "Players will pick up the published design on next sync.",
+      });
+      await load();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Could not publish";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!dirty || saving || publishing) return;
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => {
+      void saveAll({ silent: true, auto: true });
+    }, 2500);
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dirty, designDirty, itemsKey, editName, editOrientation, saving, publishing]);
+
+  useEffect(() => {
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      if (!dirty) return;
+      e.preventDefault();
+      e.returnValue = "";
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [dirty]);
+
+  const selectedPublishStatus: PublishUiStatus = publishing
+    ? "publishing"
+    : selectedItem?.item_type === "design"
+      ? ((selectedItem.publish_status as PublishUiStatus) ?? "draft")
+      : "draft";
+
+  const autoSaveStatus: AutoSaveStatus = saving
+    ? "saving"
+    : dirty
+      ? "unsaved"
+      : lastSavedAt
+        ? "saved"
+        : "idle";
+
+  const previewSlides = useMemo((): DesignPreviewSlide[] => {
+    return items.map((item) => {
+      if (item.item_type === "design") {
+        const data = resolveSlideDesign(item);
+        return {
+          id: item.id,
+          name: item.slide_name ?? "Template",
+          durationSeconds: Number(item.duration_seconds) || 10,
+          slide: {
+            kind: "design",
+            designData: data,
+            orientation: editOrientation,
+            name: item.slide_name,
+          },
+        };
+      }
+      const media = item.library_item;
+      const kind =
+        media?.file_type === "video"
+          ? ("video" as const)
+          : media?.file_type === "image"
+            ? ("image" as const)
+            : ("empty" as const);
+      return {
+        id: item.id,
+        name: media?.name ?? "Media",
+        durationSeconds: Number(item.duration_seconds) || 10,
+        slide: {
+          kind,
+          url: media?.public_url ?? null,
+          name: media?.name,
+          orientation: editOrientation,
+        },
+      };
+    });
+  }, [editOrientation, items]);
 
   return (
     <div className="flex min-h-[calc(100vh-8rem)] flex-col">
@@ -542,41 +765,58 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
       />
 
       {workspaceMode === "design" ? (
-        <DesignEditorShell
-          mode={workspaceMode}
-          onModeChange={(mode) => {
-            if (mode === "timeline") setWorkspaceMode("timeline");
-            else setWorkspaceMode("design");
-          }}
-          slideName={
-            selectedItem?.slide_name ||
-            selectedItem?.library_item?.name ||
-            editName ||
-            "Untitled slide"
-          }
-          onSlideNameChange={(value) => {
-            if (!selectedId) return;
-            setItems((prev) =>
-              prev.map((item) =>
-                item.id === selectedId ? { ...item, slide_name: value } : item,
-              ),
-            );
-            setDesignDirty(true);
-          }}
-          orientation={editOrientation}
-          onOrientationChange={setEditOrientation}
-          designData={selectedItem?.design_data ?? null}
-          contentData={selectedItem?.content_data ?? null}
-          autoSaveStatus={
-            saving ? "saving" : dirty ? "unsaved" : "saved"
-          }
-          dirty={dirty}
-          saving={saving}
-          onSave={() => void saveAll()}
-          onDesignDataChange={handleDesignDataChange}
-          slideId={selectedId}
-          previewSlides={loopPreviewSlides}
-        />
+        <div className="flex min-h-0 flex-1 flex-col gap-2">
+          <TemplateVersionBanner
+            loopId={loopId}
+            item={selectedItem}
+            className="mx-6 mt-2"
+            onItemUpdated={(next) => {
+              setItems((prev) =>
+                prev.map((row) => (row.id === next.id ? next : row)),
+              );
+              setDesignDirty(true);
+            }}
+          />
+          <DesignEditorShell
+            mode={workspaceMode}
+            onModeChange={(mode) => {
+              if (mode === "timeline") setWorkspaceMode("timeline");
+              else setWorkspaceMode("design");
+            }}
+            slideName={
+              selectedItem?.slide_name ||
+              selectedItem?.library_item?.name ||
+              editName ||
+              "Untitled slide"
+            }
+            onSlideNameChange={(value) => {
+              if (!selectedId) return;
+              setItems((prev) =>
+                prev.map((item) =>
+                  item.id === selectedId ? { ...item, slide_name: value } : item,
+                ),
+              );
+              setDesignDirty(true);
+            }}
+            orientation={editOrientation}
+            onOrientationChange={setEditOrientation}
+            designData={selectedItem?.design_data ?? null}
+            contentData={selectedItem?.content_data ?? null}
+            autoSaveStatus={autoSaveStatus}
+            lastSavedAt={lastSavedAt}
+            dirty={dirty}
+            saving={saving}
+            publishing={publishing}
+            publishStatus={selectedPublishStatus}
+            canPublish={permissions?.publish !== false}
+            onSave={() => void saveAll()}
+            onPublish={() => void publishSelectedSlide()}
+            onBack={() => setWorkspaceMode("timeline")}
+            onDesignDataChange={handleDesignDataChange}
+            slideId={selectedId}
+            previewSlides={previewSlides}
+          />
+        </div>
       ) : (
         <>
       <div className="mb-4 flex flex-wrap items-center gap-3 px-6 pt-4">
@@ -811,18 +1051,8 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
 
         {/* Preview pane */}
         <section className="flex min-h-[320px] flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white">
-          <div className="flex items-center justify-between border-b border-zinc-200 px-3 py-2">
+          <div className="border-b border-zinc-200 px-3 py-2">
             <p className="text-sm font-semibold">Preview</p>
-            <Button
-              type="button"
-              variant="secondary"
-              className="h-7 gap-1 px-2 text-xs"
-              disabled={items.length === 0}
-              onClick={() => setFullscreenPreview(true)}
-            >
-              <Maximize2 className="h-3.5 w-3.5" />
-              Fullscreen
-            </Button>
           </div>
           <div className="flex flex-1 flex-col gap-3 p-3">
             <div
@@ -833,18 +1063,28 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
                   : "aspect-video",
               )}
             >
-              {selectedPreviewSlide ? (
-                <PlaybackSlide
-                  slide={{
-                    ...selectedPreviewSlide,
-                    orientation: editOrientation,
-                  }}
-                  playAnimations={playing}
-                  animationKey={selectedId ?? "none"}
-                  autoPlayVideo={playing}
-                  muted
+              {previewDesign ? (
+                <TemplatePreview
+                  data={previewDesign as DesignData}
                   className="h-full w-full"
-                  onVideoEnded={nextPreview}
+                />
+              ) : previewMedia?.file_type === "image" && previewMedia.public_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={previewMedia.public_url}
+                  alt={previewMedia.name}
+                  className="h-full w-full object-contain"
+                />
+              ) : previewMedia?.file_type === "video" &&
+                previewMedia.public_url ? (
+                <video
+                  ref={videoRef}
+                  key={previewMedia.id}
+                  src={previewMedia.public_url}
+                  className="h-full w-full object-contain"
+                  muted
+                  playsInline
+                  onEnded={nextPreview}
                 />
               ) : (
                 <div className="flex h-full items-center justify-center text-xs text-zinc-400">
@@ -891,15 +1131,6 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
           </div>
         </section>
       </div>
-
-      <DesignPreviewMode
-        open={fullscreenPreview}
-        onClose={() => setFullscreenPreview(false)}
-        title={editName || "Loop preview"}
-        defaultOrientation={editOrientation}
-        initialSlideId={selectedId}
-        slides={loopPreviewSlides}
-      />
 
       <div className="sticky bottom-0 z-10 mt-6 flex items-center justify-between border-t border-zinc-200 bg-white/95 px-6 py-4 backdrop-blur">
         <p className="text-sm text-zinc-500">
