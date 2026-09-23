@@ -3,7 +3,6 @@ import { z } from "zod";
 import { isOrgContext, requireOrg } from "@/lib/clerk";
 import { createServiceClient } from "@/lib/supabase";
 import { TEMPLATE_INDUSTRIES } from "@/lib/templates";
-import { ensureSmartDesign } from "@/lib/smart-templates";
 import type { DesignData, Template, TemplateIndustry } from "@/types/db";
 
 const querySchema = z.object({
@@ -86,10 +85,7 @@ export async function GET(request: Request) {
       tags: t.tags ?? [],
       orientation: t.orientation,
       default_duration_seconds: Number(t.default_duration_seconds),
-      design_data: ensureSmartDesign(
-        (t.design_data ?? {}) as DesignData,
-        t.name,
-      ),
+      design_data: (t.design_data ?? {}) as DesignData,
       sort_order: t.sort_order,
       is_favorited: favoriteIds.has(t.id),
     }))

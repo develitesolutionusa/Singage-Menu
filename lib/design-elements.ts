@@ -9,27 +9,76 @@ export const ZOOM_MIN = 0.35;
 export const ZOOM_MAX = 2;
 export const ZOOM_STEP = 0.1;
 
+export type DesignFitMode = "cover" | "contain" | "fill";
+export type DesignTextAlign = "left" | "center" | "right";
+export type DesignShadow = "none" | "sm" | "md" | "lg";
+export type DesignAnimation =
+  | "none"
+  | "fade"
+  | "slide-up"
+  | "slide-down"
+  | "scale";
+export type DesignDeviceBehavior = "all" | "landscape" | "portrait";
+export type DesignButtonAction = "none" | "link" | "deep-link";
+
 export type DesignElementProps = {
   text?: string;
   label?: string;
   url?: string;
+  action?: DesignButtonAction;
   alt?: string;
-  fit?: "cover" | "contain" | "fill";
+  imageUrl?: string;
+  fit?: DesignFitMode;
   name?: string;
   description?: string;
   price?: string;
   category?: string;
   cta?: string;
+  featured?: boolean;
   dataSource?: string;
   field?: string;
   fallback?: string;
+  fontFamily?: string;
   fontSize?: number;
   fontWeight?: number;
   color?: string;
   background?: string;
+  borderColor?: string;
+  borderWidth?: number;
   borderRadius?: number;
+  shadow?: DesignShadow;
   opacity?: number;
-  align?: "left" | "center" | "right";
+  align?: DesignTextAlign;
+  lineHeight?: number;
+  letterSpacing?: number;
+  padding?: number;
+  margin?: number;
+  animation?: DesignAnimation;
+  entranceAnimation?: DesignAnimation;
+  exitAnimation?: DesignAnimation;
+  animationDuration?: number;
+  deviceBehavior?: DesignDeviceBehavior;
+};
+
+export const FONT_FAMILIES = [
+  { value: "sans", label: "Sans", css: "ui-sans-serif, system-ui, sans-serif" },
+  { value: "serif", label: "Serif", css: "ui-serif, Georgia, serif" },
+  { value: "mono", label: "Mono", css: "ui-monospace, SFMono-Regular, monospace" },
+  { value: "display", label: "Display", css: "Georgia, 'Times New Roman', serif" },
+] as const;
+
+export function fontFamilyCss(value?: string): string {
+  return (
+    FONT_FAMILIES.find((f) => f.value === value)?.css ??
+    FONT_FAMILIES[0].css
+  );
+}
+
+export const SHADOW_CSS: Record<DesignShadow, string> = {
+  none: "none",
+  sm: "0 1px 2px rgba(15, 23, 42, 0.12)",
+  md: "0 4px 12px rgba(15, 23, 42, 0.16)",
+  lg: "0 12px 28px rgba(15, 23, 42, 0.22)",
 };
 
 export type DesignElement = {
@@ -87,25 +136,60 @@ function defaultProps(type: DesignBlockType): DesignElementProps {
     case "text":
       return {
         text: "Double-click to edit",
+        fontFamily: "sans",
         fontSize: 28,
         fontWeight: 700,
         color: "#111827",
         align: "left",
+        lineHeight: 1.25,
+        letterSpacing: 0,
+        opacity: 100,
+        shadow: "none",
+        padding: 8,
+        animation: "none",
+        entranceAnimation: "none",
+        exitAnimation: "none",
+        animationDuration: 500,
+        deviceBehavior: "all",
       };
     case "button":
       return {
         label: "Learn more",
         url: "",
+        action: "link",
         background: "#2563eb",
         color: "#ffffff",
         borderRadius: 8,
+        fontFamily: "sans",
         fontWeight: 600,
+        fontSize: 14,
         align: "center",
+        opacity: 100,
+        shadow: "sm",
+        padding: 8,
+        animation: "none",
+        entranceAnimation: "none",
+        exitAnimation: "none",
+        animationDuration: 500,
+        deviceBehavior: "all",
       };
     case "image":
     case "logo":
     case "video":
-      return { alt: type, fit: "cover", background: "#e2e8f0" };
+      return {
+        alt: type,
+        fit: "cover",
+        imageUrl: "",
+        background: "#e2e8f0",
+        borderRadius: 8,
+        opacity: 100,
+        shadow: "none",
+        animation: "none",
+        entranceAnimation: "none",
+        exitAnimation: "none",
+        animationDuration: 500,
+        deviceBehavior: "all",
+      };
     case "menu-card":
       return {
         name: "Featured Item",
@@ -113,9 +197,19 @@ function defaultProps(type: DesignBlockType): DesignElementProps {
         price: "$12.00",
         category: "Mains",
         cta: "Order",
+        featured: false,
+        imageUrl: "",
         background: "#ffffff",
         color: "#111827",
         borderRadius: 12,
+        opacity: 100,
+        shadow: "sm",
+        padding: 12,
+        animation: "none",
+        entranceAnimation: "none",
+        exitAnimation: "none",
+        animationDuration: 500,
+        deviceBehavior: "all",
       };
     case "price-badge":
       return {
@@ -123,8 +217,16 @@ function defaultProps(type: DesignBlockType): DesignElementProps {
         background: "#f59e0b",
         color: "#111827",
         borderRadius: 999,
+        fontFamily: "sans",
         fontWeight: 700,
         fontSize: 20,
+        opacity: 100,
+        shadow: "sm",
+        animation: "none",
+        entranceAnimation: "none",
+        exitAnimation: "none",
+        animationDuration: 500,
+        deviceBehavior: "all",
       };
     case "promotion-card":
       return {
@@ -132,46 +234,126 @@ function defaultProps(type: DesignBlockType): DesignElementProps {
         description: "This week only",
         price: "50% OFF",
         cta: "Claim deal",
+        featured: true,
+        imageUrl: "",
         background: "#0f172a",
         color: "#f8fafc",
         borderRadius: 12,
+        opacity: 100,
+        shadow: "md",
+        padding: 12,
+        animation: "none",
+        entranceAnimation: "none",
+        exitAnimation: "none",
+        animationDuration: 500,
+        deviceBehavior: "all",
       };
     case "shape":
-      return { background: "#93c5fd", borderRadius: 12, opacity: 100 };
+      return {
+        background: "#93c5fd",
+        borderRadius: 12,
+        opacity: 100,
+        borderWidth: 0,
+        borderColor: "#3b82f6",
+        shadow: "none",
+        animation: "none",
+        entranceAnimation: "none",
+        exitAnimation: "none",
+        animationDuration: 500,
+        deviceBehavior: "all",
+      };
     case "qr-code":
-      return { background: "#ffffff", label: "QR" };
+      return {
+        background: "#ffffff",
+        label: "QR",
+        url: "",
+        opacity: 100,
+        shadow: "none",
+        animation: "none",
+        entranceAnimation: "none",
+        exitAnimation: "none",
+        animationDuration: 500,
+        deviceBehavior: "all",
+      };
     case "divider":
-      return { background: "#cbd5e1" };
+      return {
+        background: "#cbd5e1",
+        opacity: 100,
+        animation: "none",
+        entranceAnimation: "none",
+        exitAnimation: "none",
+        animationDuration: 500,
+        deviceBehavior: "all",
+      };
     case "dynamic-data":
       return {
         dataSource: "product",
         field: "price",
         fallback: "$0.00",
         text: "{{product.price}}",
+        fontFamily: "sans",
         fontSize: 20,
         fontWeight: 600,
         color: "#0f766e",
+        opacity: 100,
+        animation: "none",
+        entranceAnimation: "none",
+        exitAnimation: "none",
+        animationDuration: 500,
+        deviceBehavior: "all",
       };
     case "contact":
       return {
         text: "hello@example.com\n(555) 010-2000",
+        fontFamily: "sans",
         fontSize: 14,
         color: "#334155",
+        opacity: 100,
+        animation: "none",
+        entranceAnimation: "none",
+        exitAnimation: "none",
+        animationDuration: 500,
+        deviceBehavior: "all",
       };
     case "hours":
       return {
         text: "Mon–Fri 9am–9pm\nSat–Sun 10am–8pm",
+        fontFamily: "sans",
         fontSize: 14,
         color: "#334155",
+        opacity: 100,
+        animation: "none",
+        entranceAnimation: "none",
+        exitAnimation: "none",
+        animationDuration: 500,
+        deviceBehavior: "all",
       };
     case "location":
       return {
         text: "123 Main Street\nYour City",
+        fontFamily: "sans",
         fontSize: 14,
         color: "#334155",
+        opacity: 100,
+        animation: "none",
+        entranceAnimation: "none",
+        exitAnimation: "none",
+        animationDuration: 500,
+        deviceBehavior: "all",
       };
     case "social-icons":
-      return { text: "f  in  ig  x", fontSize: 16, color: "#475569" };
+      return {
+        text: "f  in  ig  x",
+        fontFamily: "sans",
+        fontSize: 16,
+        color: "#475569",
+        opacity: 100,
+        animation: "none",
+        entranceAnimation: "none",
+        exitAnimation: "none",
+        animationDuration: 500,
+        deviceBehavior: "all",
+      };
     default:
       return {};
   }

@@ -1,7 +1,5 @@
 "use client";
 
-import { DesignElementView } from "@/components/design-editor/design-element-view";
-import { getArtboardSize, getElements } from "@/lib/design-elements";
 import { cn } from "@/lib/utils";
 import type { DesignData } from "@/types/db";
 
@@ -26,47 +24,6 @@ export function TemplatePreview({
 }) {
   const theme = themeOf(data);
   const layout = data.layout ?? "promo-hero";
-  const elements = getElements(data);
-
-  if (elements.length > 0) {
-    const artboard = getArtboardSize("landscape");
-    const sorted = [...elements]
-      .filter((el) => !el.hidden)
-      .sort((a, b) => a.zIndex - b.zIndex);
-    const scale = compact ? 0.22 : 0.34;
-
-    return (
-      <div
-        className={cn("relative h-full w-full overflow-hidden", className)}
-        style={{ background: theme.bg }}
-      >
-        <div
-          className="absolute left-1/2 top-1/2"
-          style={{
-            width: artboard.width,
-            height: artboard.height,
-            transform: `translate(-50%, -50%) scale(${scale})`,
-          }}
-        >
-          {sorted.map((el) => (
-            <div
-              key={el.id}
-              className="absolute overflow-hidden"
-              style={{
-                left: el.x,
-                top: el.y,
-                width: el.width,
-                height: el.height,
-                zIndex: el.zIndex,
-              }}
-            >
-              <DesignElementView element={el} />
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div

@@ -28,6 +28,7 @@ import {
   getElements,
   withElements,
   type DesignElement,
+  type DesignElementProps,
 } from "@/lib/design-elements";
 import {
   ensureSmartDesign,
@@ -88,6 +89,15 @@ export function DesignEditorShell({
     slideName,
   );
 
+  /** Never call parent setState synchronously from this component's render/updaters. */
+  const notifyParent = useCallback(
+    (data: DesignData) => {
+      if (!onDesignDataChange) return;
+      queueMicrotask(() => onDesignDataChange(data));
+    },
+    [onDesignDataChange],
+  );
+
   const [history, setHistory] = useState<DesignHistoryState>(() =>
     createHistory({
       elements: getElements(resolvedDesign),
@@ -102,7 +112,7 @@ export function DesignEditorShell({
   const [showGrid] = useState(true);
   const [layersOpen, setLayersOpen] = useState(false);
   const [layoutLocked, setLayoutLocked] = useState(
-    () => isSmartTemplate(resolvedDesign) && resolvedDesign.layoutLocked !== false,
+    () => resolvedDesign.layoutLocked === true,
   );
   const [previewOpen, setPreviewOpen] = useState(false);
   const [clipboard, setClipboard] = useState<DesignElement[]>([]);
@@ -125,7 +135,7 @@ export function DesignEditorShell({
     );
     setLoadedSlideId(id);
     setWorkingDesign(next);
-    setLayoutLocked(isSmartTemplate(next) && next.layoutLocked !== false);
+    setLayoutLocked(next.layoutLocked === true);
     setHistory(
       createHistory({
         elements: getElements(next),
@@ -153,9 +163,9 @@ export function DesignEditorShell({
       );
       const nextData = withElements(workingDesign, nextElements);
       setWorkingDesign(nextData);
-      onDesignDataChange?.(nextData);
+      notifyParent(nextData);
     },
-    [onDesignDataChange, selectedIds, workingDesign],
+    [notifyParent, selectedIds, workingDesign],
   );
 
   const handleSmartFieldChange = useCallback(
@@ -169,9 +179,47 @@ export function DesignEditorShell({
           selectedIds: prev.present.selectedIds,
         }),
       );
-      onDesignDataChange?.(nextData);
+      notifyParent(nextData);
     },
-    [onDesignDataChange, workingDesign],
+    [notifyParent, workingDesign],
+  );
+
+  const handlePatchElement = useCallback(
+    (
+      patch: Partial<DesignElement> & { props?: Partial<DesignElementProps> },
+      options?: { history?: boolean },
+    ) => {
+      const id = selectedIds[0];
+      if (!id) return;
+      const history = options?.history !== false;
+
+      const nextElements = elements.map((el) => {
+        if (el.id !== id) return el;
+        const { props: propsPatch, ...rest } = patch;
+        return {
+          ...el,
+          ...rest,
+          props: propsPatch ? { ...el.props, ...propsPatch } : el.props,
+        };
+      });
+
+      if (history) {
+        commit(nextElements, selectedIds);
+        return;
+      }
+
+      setHistory((prev) => ({
+        ...prev,
+        present: {
+          ...prev.present,
+          elements: nextElements,
+        },
+      }));
+      const nextData = withElements(workingDesign, nextElements);
+      setWorkingDesign(nextData);
+      notifyParent(nextData);
+    },
+    [commit, elements, notifyParent, selectedIds, workingDesign],
   );
 
   const setElementsLive = useCallback(
@@ -195,17 +243,15 @@ export function DesignEditorShell({
   }, []);
 
   const handleInteractionEnd = useCallback(() => {
-    setHistory((prev) => {
-      const pushed = pushHistory(prev, {
-        elements: cloneElements(prev.present.elements),
-        selectedIds: prev.present.selectedIds,
-      });
-      const nextData = withElements(workingDesign, pushed.present.elements);
-      setWorkingDesign(nextData);
-      onDesignDataChange?.(nextData);
-      return pushed;
+    const pushed = pushHistory(history, {
+      elements: cloneElements(history.present.elements),
+      selectedIds: history.present.selectedIds,
     });
-  }, [onDesignDataChange, workingDesign]);
+    setHistory(pushed);
+    const nextData = withElements(workingDesign, pushed.present.elements);
+    setWorkingDesign(nextData);
+    notifyParent(nextData);
+  }, [history, notifyParent, workingDesign]);
 
   const deleteSelected = useCallback(() => {
     if (!selectedIds.length || layoutLocked) return;
@@ -247,26 +293,22 @@ export function DesignEditorShell({
   }, [commit, elements, selectedElements, selectedIds]);
 
   const undo = useCallback(() => {
-    setHistory((prev) => {
-      const next = undoHistory(prev);
-      if (!next) return prev;
-      const nextData = withElements(workingDesign, next.present.elements);
-      setWorkingDesign(nextData);
-      onDesignDataChange?.(nextData);
-      return next;
-    });
-  }, [onDesignDataChange, workingDesign]);
+    const next = undoHistory(history);
+    if (!next) return;
+    setHistory(next);
+    const nextData = withElements(workingDesign, next.present.elements);
+    setWorkingDesign(nextData);
+    notifyParent(nextData);
+  }, [history, notifyParent, workingDesign]);
 
   const redo = useCallback(() => {
-    setHistory((prev) => {
-      const next = redoHistory(prev);
-      if (!next) return prev;
-      const nextData = withElements(workingDesign, next.present.elements);
-      setWorkingDesign(nextData);
-      onDesignDataChange?.(nextData);
-      return next;
-    });
-  }, [onDesignDataChange, workingDesign]);
+    const next = redoHistory(history);
+    if (!next) return;
+    setHistory(next);
+    const nextData = withElements(workingDesign, next.present.elements);
+    setWorkingDesign(nextData);
+    notifyParent(nextData);
+  }, [history, notifyParent, workingDesign]);
 
   // Custom events from context toolbar
   useEffect(() => {
@@ -372,9 +414,9 @@ export function DesignEditorShell({
 
   function handleSelectBlock(type: DesignBlockType) {
     if (layoutLocked) {
-      toast.message("Smart Template layout is locked", {
+      toast.message("Layout is locked", {
         description:
-          "Edit content fields in the right panel. Unlock layout only with permission.",
+          "Unlock layout from the bottom bar to add blocks, or edit Manager content fields.",
       });
       return;
     }
@@ -451,7 +493,10 @@ export function DesignEditorShell({
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           {isSmartTemplate(workingDesign) ? (
             <div className="border-b border-zinc-200 bg-white px-3 py-2">
-              <SmartTemplateBanner data={workingDesign} />
+              <SmartTemplateBanner
+                data={workingDesign}
+                layoutLocked={layoutLocked}
+              />
             </div>
           ) : null}
           <DesignEditorCanvas
@@ -522,10 +567,12 @@ export function DesignEditorShell({
         <DesignEditorProperties
           tab={propTab}
           onTabChange={setPropTab}
-          selectedBlockType={primarySelected?.type ?? null}
-          locked={layoutLocked || Boolean(primarySelected?.locked)}
+          selectedElement={primarySelected}
+          layoutLocked={layoutLocked}
           designData={workingDesign}
           onSmartFieldChange={handleSmartFieldChange}
+          onPatchElement={handlePatchElement}
+          layerCount={elements.length}
         />
       </div>
 
@@ -534,22 +581,34 @@ export function DesignEditorShell({
         onToggleLayers={() => setLayersOpen((v) => !v)}
         locked={layoutLocked}
         onToggleLock={() => {
-          if (isSmartTemplate(workingDesign) && layoutLocked) {
-            toast.message("Layout stays locked for Smart Templates", {
-              description:
-                "Managers edit content fields only. Unlock Layout permissions arrive in a later step.",
-            });
-            return;
+          const nextLocked = !layoutLocked;
+          setLayoutLocked(nextLocked);
+
+          const nextElements = nextLocked
+            ? elements
+            : elements.map((el) => ({ ...el, locked: false }));
+
+          if (!nextLocked) {
+            setHistory((prev) =>
+              pushHistory(prev, {
+                elements: cloneElements(nextElements),
+                selectedIds: prev.present.selectedIds,
+              }),
+            );
           }
-          setLayoutLocked((v) => !v);
-          toast.message(
-            layoutLocked ? "Layout unlocked" : "Layout locked",
-            {
-              description: layoutLocked
-                ? "You can move, resize, and add blocks."
-                : "Structural edits are paused. Content editing stays available.",
-            },
-          );
+
+          const nextData: DesignData = {
+            ...withElements(workingDesign, nextElements),
+            layoutLocked: nextLocked,
+          };
+          setWorkingDesign(nextData);
+          notifyParent(nextData);
+
+          toast.success(nextLocked ? "Layout locked" : "Layout unlocked", {
+            description: nextLocked
+              ? "Structure is protected. Toggle Unlock anytime to edit freely."
+              : "You can edit fields, move, resize, and add blocks.",
+          });
         }}
         zoom={zoom}
         onZoomIn={() =>

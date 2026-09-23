@@ -20,12 +20,6 @@ export type DesignMenuItem = { name: string; price?: string };
 export type DesignSection = { title: string; items?: DesignMenuItem[] };
 
 export type DesignData = {
-  /** Smart Template flag — professionally authored, content-editable. */
-  smart?: boolean;
-  layoutLocked?: boolean;
-  editableFields?: unknown[];
-  contentValues?: Record<string, string>;
-  elements?: unknown[];
   layout?: string;
   theme?: {
     bg?: string;
@@ -44,6 +38,8 @@ export type DesignData = {
   sections?: DesignSection[];
   [key: string]: unknown;
 };
+
+export type PublishStatus = "draft" | "saved" | "published";
 
 export type Template = {
   id: string;
@@ -115,8 +111,8 @@ export type LoopItem = {
   template_version: number | null;
   design_data: DesignData | null;
   content_data: DesignData | null;
-  overrides: Record<string, unknown>;
-  publish_status: "draft" | "saved" | "published";
+  overrides: Record<string, unknown> | null;
+  publish_status: PublishStatus;
   slide_name: string | null;
   position: number;
   duration_seconds: number;
@@ -263,8 +259,8 @@ type Tables = {
       template_version: number | null;
       design_data: DesignData | null;
       content_data: DesignData | null;
-      overrides: Record<string, unknown>;
-      publish_status: "draft" | "saved" | "published";
+      overrides: Record<string, unknown> | null;
+      publish_status: PublishStatus;
       slide_name: string | null;
       position: number;
       duration_seconds: number;
@@ -280,8 +276,8 @@ type Tables = {
       template_version?: number | null;
       design_data?: DesignData | null;
       content_data?: DesignData | null;
-      overrides?: Record<string, unknown>;
-      publish_status?: "draft" | "saved" | "published";
+      overrides?: Record<string, unknown> | null;
+      publish_status?: PublishStatus;
       slide_name?: string | null;
       position?: number;
       duration_seconds?: number;
@@ -297,8 +293,8 @@ type Tables = {
       template_version: number | null;
       design_data: DesignData | null;
       content_data: DesignData | null;
-      overrides: Record<string, unknown>;
-      publish_status: "draft" | "saved" | "published";
+      overrides: Record<string, unknown> | null;
+      publish_status: PublishStatus;
       slide_name: string | null;
       position: number;
       duration_seconds: number;

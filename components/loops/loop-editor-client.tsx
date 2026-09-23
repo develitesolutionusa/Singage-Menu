@@ -438,22 +438,25 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
       ? resolveSlideDesign(selectedItem)
       : null;
 
-  function handleDesignDataChange(data: DesignData) {
-    if (!selectedId) return;
-    setItems((prev) =>
-      prev.map((item) =>
-        item.id === selectedId
-          ? {
-              ...item,
-              content_data: data,
-              design_data: data,
-              publish_status: "draft",
-            }
-          : item,
-      ),
-    );
-    setDesignDirty(true);
-  }
+  const handleDesignDataChange = useCallback(
+    (data: DesignData) => {
+      if (!selectedId) return;
+      setItems((prev) =>
+        prev.map((item) =>
+          item.id === selectedId
+            ? {
+                ...item,
+                content_data: data,
+                design_data: data,
+                publish_status: "draft",
+              }
+            : item,
+        ),
+      );
+      setDesignDirty(true);
+    },
+    [selectedId],
+  );
 
   async function saveAll() {
     if (!editName.trim()) {

@@ -112,7 +112,7 @@ export function applyContentValues(
   return {
     ...withElements(data, nextElements),
     smart: true,
-    layoutLocked: data.layoutLocked !== false,
+    layoutLocked: data.layoutLocked === true,
     editableFields: fields,
     contentValues: values,
   };
@@ -134,7 +134,7 @@ function el(
 ): DesignElement {
   return {
     rotation: 0,
-    locked: true,
+    locked: false,
     hidden: false,
     ...partial,
   };
@@ -168,7 +168,7 @@ function buildSmartDesign(input: BuildInput): DesignData {
 
   const base: DesignData = {
     smart: true,
-    layoutLocked: true,
+    layoutLocked: false,
     layout: input.layout,
     theme: input.theme,
     elements: input.elements,
@@ -924,7 +924,7 @@ export function ensureSmartDesign(
   if (!data) {
     return {
       smart: true,
-      layoutLocked: true,
+      layoutLocked: false,
       elements: [],
       editableFields: [],
       contentValues: {},

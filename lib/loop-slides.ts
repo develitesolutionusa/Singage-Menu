@@ -1,5 +1,4 @@
 import type { DesignData, Template } from "@/types/db";
-import { ensureSmartDesign } from "@/lib/smart-templates";
 
 /**
  * Build a loop slide insert payload from a template.
@@ -18,10 +17,7 @@ export function buildTemplateSlideInsert(input: {
   >;
   position: number;
 }) {
-  const content = ensureSmartDesign(
-    (input.template.design_data ?? {}) as DesignData,
-    input.template.name,
-  );
+  const content = (input.template.design_data ?? {}) as DesignData;
   return {
     clerk_org_id: input.orgId,
     loop_id: input.loopId,
@@ -44,10 +40,7 @@ export function resolveSlideDesign(
   item: {
     content_data?: DesignData | null;
     design_data?: DesignData | null;
-    slide_name?: string | null;
   },
 ): DesignData | null {
-  const raw = item.content_data ?? item.design_data ?? null;
-  if (!raw) return null;
-  return ensureSmartDesign(raw, item.slide_name);
+  return item.content_data ?? item.design_data ?? null;
 }

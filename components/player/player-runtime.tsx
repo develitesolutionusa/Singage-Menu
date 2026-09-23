@@ -13,7 +13,6 @@ import {
 import { PlLoader } from "@/components/ui/pl-loader";
 import { TemplatePreview } from "@/components/templates/template-preview";
 import type { DesignData } from "@/types/db";
-import { ensureSmartDesign } from "@/lib/smart-templates";
 
 const HEARTBEAT_MS = 30_000;
 const POLL_MS = 15_000;
@@ -450,7 +449,7 @@ function MediaSlide({ item }: { item: PlaybackItem }) {
     }
     return (
       <TemplatePreview
-        data={ensureSmartDesign(item.designData as DesignData, item.name)}
+        data={item.designData as DesignData}
         className="h-full w-full"
       />
     );
