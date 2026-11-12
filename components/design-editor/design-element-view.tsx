@@ -134,43 +134,78 @@ export function DesignElementView({
       ) : null}
 
       {element.type === "menu-card" || element.type === "promotion-card" ? (
-        <div className="flex h-full flex-col justify-between gap-2">
-          {props.imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={props.imageUrl}
-              alt={props.name || "Item"}
-              className="h-16 w-full rounded object-cover"
-              draggable={false}
-            />
-          ) : null}
-          <div className="min-h-0 flex-1">
-            {props.category ? (
-              <p className="text-[10px] font-semibold uppercase tracking-wide opacity-70">
-                {props.category}
-              </p>
+        props.imageUrl || props.cta ? (
+          <div className="flex h-full flex-col justify-between gap-2">
+            {props.imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={props.imageUrl}
+                alt={props.name || "Item"}
+                className="h-16 w-full rounded object-cover"
+                draggable={false}
+              />
             ) : null}
-            <p className="text-sm font-semibold leading-tight">
-              {props.name || "Item"}
-              {props.featured ? (
-                <span className="ml-1 text-[10px] font-bold text-amber-500">
-                  ★
+            <div className="min-h-0 flex-1">
+              {props.category ? (
+                <p className="text-[10px] font-semibold uppercase tracking-wide opacity-70">
+                  {props.category}
+                </p>
+              ) : null}
+              <p className="text-sm font-semibold leading-tight">
+                {props.name || "Item"}
+                {props.featured ? (
+                  <span className="ml-1 text-[10px] font-bold text-amber-500">
+                    ★
+                  </span>
+                ) : null}
+              </p>
+              {props.description ? (
+                <p className="mt-1 text-[11px] opacity-80">{props.description}</p>
+              ) : null}
+            </div>
+            <div className="flex items-end justify-between gap-2">
+              <span className="text-base font-bold">{props.price || "$0"}</span>
+              {props.cta ? (
+                <span className="rounded bg-black/10 px-2 py-0.5 text-[10px] font-semibold">
+                  {props.cta}
                 </span>
               ) : null}
-            </p>
-            {props.description ? (
-              <p className="mt-1 text-[11px] opacity-80">{props.description}</p>
-            ) : null}
+            </div>
           </div>
-          <div className="flex items-end justify-between gap-2">
-            <span className="text-base font-bold">{props.price || "$0"}</span>
-            {props.cta ? (
-              <span className="rounded bg-black/10 px-2 py-0.5 text-[10px] font-semibold">
-                {props.cta}
+        ) : (
+          /* Compact row with dotted leader — used by zone menu boards */
+          <div className="flex h-full flex-col justify-center overflow-hidden px-0.5">
+            <div className="flex min-w-0 items-baseline gap-1">
+              <span
+                className="min-w-0 shrink truncate font-extrabold uppercase tracking-wide"
+                style={{ fontSize: props.fontSize ?? 14 }}
+              >
+                {props.name || "Item"}
               </span>
+              {props.featured ? (
+                <span className="shrink-0 text-[9px] font-bold text-amber-500">
+                  NEW
+                </span>
+              ) : null}
+              <span
+                className="mx-0.5 min-w-[8px] flex-1 border-b border-dotted border-current opacity-30"
+                style={{ marginBottom: 2 }}
+                aria-hidden
+              />
+              <span
+                className="shrink-0 font-bold tabular-nums"
+                style={{ fontSize: props.fontSize ?? 14 }}
+              >
+                {props.price || "$0"}
+              </span>
+            </div>
+            {props.description ? (
+              <p className="mt-0.5 truncate text-[11px] italic opacity-60">
+                {props.description}
+              </p>
             ) : null}
           </div>
-        </div>
+        )
       ) : null}
 
       {element.type === "price-badge" ? (

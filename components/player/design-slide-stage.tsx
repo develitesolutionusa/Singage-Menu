@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { DesignElementView } from "@/components/design-editor/design-element-view";
+import { ZoneBoardStage } from "@/components/menu-board/zone-board-stage";
 import { TemplatePreview } from "@/components/templates/template-preview";
 import {
   getArtboardSize,
@@ -9,6 +10,8 @@ import {
   type DesignAnimation,
   type DesignElement,
 } from "@/lib/design-elements";
+import { adaptDesignToOrientation } from "@/lib/design-orientation";
+import { isZoneBoardDesign } from "@/lib/menu-board/to-design-data";
 import { ensureSmartDesign } from "@/lib/smart-templates";
 import { cn } from "@/lib/utils";
 import type { DesignData, Orientation } from "@/types/db";
@@ -71,7 +74,19 @@ export function DesignSlideStage({
   animationKey?: string | number;
   deviceOrientation?: Orientation;
 }) {
-  const design = ensureSmartDesign(data);
+  const design = adaptDesignToOrientation(ensureSmartDesign(data), orientation);
+
+  // Zone menu boards play through ScreenStage + ZoneRenderer (TV-faithful).
+  if (isZoneBoardDesign(design) && design.zoneTemplate) {
+    return (
+      <ZoneBoardStage
+        data={design}
+        orientation={orientation}
+        className={className}
+      />
+    );
+  }
+
   const elements = getElements(design).filter((el) => {
     if (el.hidden) return false;
     const behavior = el.props.deviceBehavior ?? "all";

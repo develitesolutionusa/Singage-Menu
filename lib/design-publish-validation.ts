@@ -49,20 +49,45 @@ function looksLikeUrl(value: string): boolean {
   }
 }
 
+/**
+ * Editor resize floor (24px) is for drag handles — dense menu templates
+ * intentionally author compact text / divider / rule layers below that.
+ */
+function minPublishSize(el: DesignElement): number {
+  switch (el.type) {
+    case "text":
+    case "dynamic-data": {
+      const fontSize =
+        typeof el.props.fontSize === "number" && el.props.fontSize > 0
+          ? el.props.fontSize
+          : 12;
+      return Math.max(8, Math.min(MIN_ELEMENT_SIZE, Math.ceil(fontSize * 0.75)));
+    }
+    case "divider":
+      return 2;
+    case "shape":
+      // Thin accent bars / rules in smart templates.
+      return 2;
+    default:
+      return MIN_ELEMENT_SIZE;
+  }
+}
+
 function validateElementDimensions(
   el: DesignElement,
   artboard: { width: number; height: number },
   issues: PublishValidationIssue[],
 ) {
+  const minSize = minPublishSize(el);
   if (
     !Number.isFinite(el.width) ||
     !Number.isFinite(el.height) ||
-    el.width < MIN_ELEMENT_SIZE ||
-    el.height < MIN_ELEMENT_SIZE
+    el.width < minSize ||
+    el.height < minSize
   ) {
     issues.push({
       code: "invalid_dimensions",
-      message: `“${el.name}” has invalid size (min ${MIN_ELEMENT_SIZE}px).`,
+      message: `“${el.name}” has invalid size (min ${minSize}px).`,
       elementId: el.id,
     });
   }

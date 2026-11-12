@@ -11,7 +11,7 @@ import {
   type PlaybackPayload,
 } from "@/lib/player-cache";
 import { PlLoader } from "@/components/ui/pl-loader";
-import { TemplatePreview } from "@/components/templates/template-preview";
+import { PlaybackSlide } from "@/components/player/playback-slide";
 import type { DesignData } from "@/types/db";
 
 const HEARTBEAT_MS = 30_000;
@@ -427,7 +427,11 @@ export function PlayerRuntime({ playerId }: { playerId: string }) {
           className="relative overflow-hidden bg-black"
           style={contentFrameStyle(orientation, payload.player.rotation)}
         >
-          <MediaSlide key={`${current.id}-${index}`} item={current} />
+          <MediaSlide
+            key={`${current.id}-${index}`}
+            item={current}
+            orientation={orientation}
+          />
         </div>
       </div>
       <div className="pointer-events-none absolute left-3 top-3 rounded bg-black/50 px-2 py-1 text-[10px] text-zinc-300">
@@ -438,7 +442,13 @@ export function PlayerRuntime({ playerId }: { playerId: string }) {
   );
 }
 
-function MediaSlide({ item }: { item: PlaybackItem }) {
+function MediaSlide({
+  item,
+  orientation,
+}: {
+  item: PlaybackItem;
+  orientation: "landscape" | "portrait";
+}) {
   if (item.itemType === "design" || item.fileType === "design") {
     if (!item.designData) {
       return (
@@ -448,8 +458,15 @@ function MediaSlide({ item }: { item: PlaybackItem }) {
       );
     }
     return (
-      <TemplatePreview
-        data={item.designData as DesignData}
+      <PlaybackSlide
+        slide={{
+          kind: "design",
+          designData: item.designData as DesignData,
+          name: item.name,
+          orientation,
+        }}
+        playAnimations
+        animationKey={`${item.id}-${orientation}`}
         className="h-full w-full"
       />
     );
@@ -465,25 +482,27 @@ function MediaSlide({ item }: { item: PlaybackItem }) {
 
   if (item.fileType === "video") {
     return (
-      // eslint-disable-next-line jsx-a11y/media-has-caption
-      <video
-        src={item.url}
-        className="h-full w-full object-contain"
-        autoPlay
-        muted
-        playsInline
-        loop={false}
+      <PlaybackSlide
+        slide={{
+          kind: "video",
+          url: item.url,
+          name: item.name,
+          orientation,
+        }}
+        className="h-full w-full"
       />
     );
   }
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={item.url}
-      alt={item.name}
-      className="h-full w-full object-contain"
-      draggable={false}
+    <PlaybackSlide
+      slide={{
+        kind: "image",
+        url: item.url,
+        name: item.name,
+        orientation,
+      }}
+      className="h-full w-full"
     />
   );
 }

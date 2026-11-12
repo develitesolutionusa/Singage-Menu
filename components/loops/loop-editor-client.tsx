@@ -43,6 +43,10 @@ import type {
 } from "@/components/design-editor/design-editor-toolbar";
 import { TemplateVersionBanner } from "@/components/loops/template-version-banner";
 import { TemplatePreview } from "@/components/templates/template-preview";
+import {
+  adaptDesignToOrientation,
+  designMatchesOrientation,
+} from "@/lib/design-orientation";
 import { resolveSlideDesign } from "@/lib/loop-slides";
 import type { TemplatePermissionSet } from "@/lib/template-permissions";
 import { cn, formatBytes, formatDuration } from "@/lib/utils";
@@ -57,6 +61,34 @@ import type {
 } from "@/types/db";
 
 type PathSegment = { id: string; name: string };
+
+function demotePublishStatus(
+  status: PublishStatus | null | undefined,
+): PublishStatus {
+  if (status === "published" || status === "saved") return "draft";
+  return status ?? "draft";
+}
+
+function adaptLoopItemsToOrientation(
+  items: LoopItem[],
+  orientation: Orientation,
+): { items: LoopItem[]; changed: boolean } {
+  let changed = false;
+  const next = items.map((item) => {
+    if (item.item_type !== "design") return item;
+    const data = resolveSlideDesign(item);
+    if (!data || designMatchesOrientation(data, orientation)) return item;
+    const adapted = adaptDesignToOrientation(data, orientation);
+    changed = true;
+    return {
+      ...item,
+      content_data: adapted,
+      design_data: adapted,
+      publish_status: demotePublishStatus(item.publish_status),
+    };
+  });
+  return { items: next, changed };
+}
 
 function SortableTimelineRow({
   item,
@@ -205,6 +237,8 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
   const itemsRef = useRef(items);
   const designDirtyRef = useRef(designDirty);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // After a failed auto-save, don't retry the same edit. Cleared when the edit changes.
+  const autoSavePauseKeyRef = useRef<string | null>(null);
   const folderId = path.length ? path[path.length - 1].id : null;
 
   itemsRef.current = items;
@@ -262,6 +296,9 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
         const nextOrientation: Orientation =
           loopJson.loop?.orientation ?? "landscape";
 
+        const adapted = adaptLoopItemsToOrientation(nextItems, nextOrientation);
+        nextItems = adapted.items;
+
         setLoop(loopJson.loop);
         setEditName(nextName);
         setEditOrientation(nextOrientation);
@@ -279,8 +316,10 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
             .join("|"),
         });
         if (!preserve) {
-          setDirty(false);
-          setDesignDirty(false);
+          setDirty(adapted.changed);
+          setDesignDirty(adapted.changed);
+        } else if (adapted.changed) {
+          setDesignDirty(true);
         }
         setSelectedId((prev) => {
           if (prev && nextItems.some((i) => i.id === prev)) return prev;
@@ -496,12 +535,7 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
                 content_data: data,
                 design_data: data,
                 // Demote published slides to draft until Save/Publish.
-                publish_status:
-                  item.publish_status === "published"
-                    ? "draft"
-                    : item.publish_status === "saved"
-                      ? "draft"
-                      : (item.publish_status ?? "draft"),
+                publish_status: demotePublishStatus(item.publish_status),
               }
             : item,
         ),
@@ -539,24 +573,62 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
 
       const publishingThis =
         publishTargetId != null && item.id === publishTargetId;
-      let publishStatus: PublishStatus = "saved";
-      if (publishingThis) {
-        publishStatus = "published";
-      } else if (item.publish_status === "published") {
-        publishStatus = "published";
-      } else {
-        publishStatus = "saved";
+
+      // Ordinary saves must not re-submit an already published slide.
+      // That re-runs publish checks, fails, and the editor retries forever.
+      if (!publishingThis && item.publish_status === "published") {
+        return base;
       }
 
+      const raw = (item.content_data ??
+        item.design_data ??
+        {}) as DesignData;
       return {
         ...base,
-        contentData: (item.content_data ??
-          item.design_data ??
-          {}) as DesignData,
+        contentData: adaptDesignToOrientation(raw, editOrientation),
         slideName: item.slide_name ?? undefined,
-        publishStatus,
+        publishStatus: publishingThis ? "published" : "saved",
       };
     });
+  }
+
+  function handleOrientationChange(value: Orientation) {
+    if (value === editOrientation) return;
+    setEditOrientation(value);
+    const { items: next, changed } = adaptLoopItemsToOrientation(
+      itemsRef.current,
+      value,
+    );
+    if (changed) {
+      setItems(next);
+      setDesignDirty(true);
+    }
+  }
+
+  function editKey() {
+    return `${editName.trim()}\0${editOrientation}\0${itemsKey}\0${designDirty}`;
+  }
+
+  async function persistLoopMeta() {
+    const name = editName.trim();
+    if (
+      baseline &&
+      baseline.name === name &&
+      baseline.orientation === editOrientation
+    ) {
+      return;
+    }
+
+    const metaRes = await fetch(`/api/loops/${loopId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        orientation: editOrientation,
+      }),
+    });
+    const metaJson = await metaRes.json();
+    if (!metaRes.ok) throw new Error(metaJson.error ?? "Could not save loop");
   }
 
   async function saveAll(options?: { silent?: boolean; auto?: boolean }) {
@@ -566,20 +638,12 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
       if (!options?.silent) toast.error(message);
       return false;
     }
+    const pauseKey = editKey();
     setSaving(true);
     setError(null);
     try {
       const snapshot = itemsRef.current;
-      const metaRes = await fetch(`/api/loops/${loopId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: editName.trim(),
-          orientation: editOrientation,
-        }),
-      });
-      const metaJson = await metaRes.json();
-      if (!metaRes.ok) throw new Error(metaJson.error ?? "Could not save loop");
+      await persistLoopMeta();
 
       const itemsRes = await fetch(`/api/loops/${loopId}/items`, {
         method: "PATCH",
@@ -607,6 +671,7 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
       });
       setDirty(false);
       setLastSavedAt(formatSavedClock());
+      autoSavePauseKeyRef.current = null;
       if (!options?.silent) {
         toast.success(options?.auto ? "Auto-saved" : "Loop saved");
       }
@@ -616,6 +681,9 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
     } catch (e) {
       const message = e instanceof Error ? e.message : "Could not save";
       setError(message);
+      if (options?.auto) {
+        autoSavePauseKeyRef.current = pauseKey;
+      }
       if (!options?.silent) toast.error(message);
       return false;
     } finally {
@@ -646,16 +714,7 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
       }
 
       const snapshot = itemsRef.current;
-      const metaRes = await fetch(`/api/loops/${loopId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: editName.trim(),
-          orientation: editOrientation,
-        }),
-      });
-      const metaJson = await metaRes.json();
-      if (!metaRes.ok) throw new Error(metaJson.error ?? "Could not save loop");
+      await persistLoopMeta();
 
       const itemsRes = await fetch(`/api/loops/${loopId}/items`, {
         method: "PATCH",
@@ -687,6 +746,7 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
       });
       setDirty(false);
       setLastSavedAt(formatSavedClock());
+      autoSavePauseKeyRef.current = null;
       toast.success("Slide published", {
         description: "Players will pick up the published design on next sync.",
       });
@@ -700,8 +760,12 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
   }
 
   // Debounce auto-save a bit longer so typing isn't constantly interrupted.
+  // A failed auto-save pauses until the edit itself changes, so a rejected
+  // save cannot keep PATCHing the same loop.
   useEffect(() => {
     if (!dirty || saving || publishing) return;
+    const pauseKey = `${editName.trim()}\0${editOrientation}\0${itemsKey}\0${designDirty}`;
+    if (autoSavePauseKeyRef.current === pauseKey) return;
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
       void saveAll({ silent: true, auto: true });
@@ -796,7 +860,6 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
               setItems((prev) =>
                 prev.map((row) => (row.id === next.id ? next : row)),
               );
-              setDesignDirty(true);
             }}
           />
           <DesignEditorShell
@@ -815,13 +878,19 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
               if (!selectedId) return;
               setItems((prev) =>
                 prev.map((item) =>
-                  item.id === selectedId ? { ...item, slide_name: value } : item,
+                  item.id === selectedId
+                    ? {
+                        ...item,
+                        slide_name: value,
+                        publish_status: demotePublishStatus(item.publish_status),
+                      }
+                    : item,
                 ),
               );
               setDesignDirty(true);
             }}
             orientation={editOrientation}
-            onOrientationChange={setEditOrientation}
+            onOrientationChange={handleOrientationChange}
             designData={selectedItem?.design_data ?? null}
             contentData={selectedItem?.content_data ?? null}
             autoSaveStatus={autoSaveStatus}
@@ -858,7 +927,7 @@ export function LoopEditorClient({ loopId }: { loopId: string }) {
         <Select
           value={editOrientation}
           onChange={(e) =>
-            setEditOrientation(e.target.value as Orientation)
+            handleOrientationChange(e.target.value as Orientation)
           }
         >
           <option value="landscape">Landscape</option>

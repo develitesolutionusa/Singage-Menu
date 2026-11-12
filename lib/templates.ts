@@ -1,16 +1,10 @@
 import type { DesignData, Orientation, TemplateIndustry } from "@/types/db";
 
+/** Product currently ships Restaurant & Food templates only. */
+export const DEFAULT_TEMPLATE_INDUSTRY: TemplateIndustry = "Restaurant & Food";
+
 export const TEMPLATE_INDUSTRIES: TemplateIndustry[] = [
-  "Restaurant & Food",
-  "Retail",
-  "Healthcare",
-  "Education",
-  "Hospitality",
-  "Corporate",
-  "Real Estate",
-  "Fitness",
-  "Automotive",
-  "Custom",
+  DEFAULT_TEMPLATE_INDUSTRY,
 ];
 
 export type TemplateListItem = {

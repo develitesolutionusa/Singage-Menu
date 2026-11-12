@@ -48,11 +48,12 @@ export async function POST(request: Request, { params }: Params) {
 
   let loopId: string;
   let createdNew = false;
+  let loopOrientation: "landscape" | "portrait" = "landscape";
 
   if (body.mode === "existing") {
     const { data: loop } = await supabase
       .from("loops")
-      .select("id, name")
+      .select("id, name, orientation")
       .eq("clerk_org_id", ctx.orgId)
       .eq("id", body.loopId)
       .maybeSingle();
@@ -61,16 +62,19 @@ export async function POST(request: Request, { params }: Params) {
       return NextResponse.json({ error: "Loop not found" }, { status: 404 });
     }
     loopId = loop.id;
+    loopOrientation =
+      loop.orientation === "portrait" ? "portrait" : "landscape";
   } else {
     const name = body.loopName?.trim() || template.name;
     const orientation = body.orientation ?? template.orientation ?? "landscape";
+    loopOrientation = orientation === "portrait" ? "portrait" : "landscape";
 
     const { data: loop, error: loopError } = await supabase
       .from("loops")
       .insert({
         clerk_org_id: ctx.orgId,
         name,
-        orientation,
+        orientation: loopOrientation,
       })
       .select("id, name")
       .single();
@@ -112,6 +116,7 @@ export async function POST(request: Request, { params }: Params) {
         loopId,
         template,
         position: nextPosition,
+        orientation: loopOrientation,
       }),
     )
     .select("*")

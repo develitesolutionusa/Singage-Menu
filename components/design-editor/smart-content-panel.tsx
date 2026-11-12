@@ -27,6 +27,9 @@ export function SmartTemplateBanner({
   if (!isSmartTemplate(data)) return null;
 
   const locked = layoutLocked ?? data.layoutLocked === true;
+  const isZoneBoard =
+    data.zoneBoard === true ||
+    String(data.layout ?? "").startsWith("zone-board:");
 
   return (
     <div
@@ -44,16 +47,20 @@ export function SmartTemplateBanner({
         ) : (
           <Unlock className="h-3.5 w-3.5" />
         )}
-        Smart Template
+        {isZoneBoard ? "Zone Menu Board" : "Smart Template"}
       </span>
       <span className={locked ? "text-teal-800/80" : "text-zinc-600"}>
         {locked ? "Layout locked" : "Layout unlocked"}
       </span>
       <span className="hidden sm:inline opacity-50">·</span>
       <span className={locked ? "text-teal-800/80" : "text-zinc-600"}>
-        {locked
-          ? "Unlock anytime from the bottom bar"
-          : "All fields editable · lock anytime"}
+        {isZoneBoard
+          ? locked
+            ? "Edit prices & copy in Manager content · Preview uses TV renderer"
+            : "Drag zones on canvas · Manager content syncs to live preview"
+          : locked
+            ? "Unlock anytime from the bottom bar"
+            : "All fields editable · lock anytime"}
       </span>
     </div>
   );

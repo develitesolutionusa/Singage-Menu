@@ -20,6 +20,7 @@ import {
 import type { DesignBlockType } from "@/components/design-editor/blocks";
 import type { TemplateListItem } from "@/lib/templates";
 import { resolveSlideDesign } from "@/lib/loop-slides";
+import { adaptDesignToOrientation } from "@/lib/design-orientation";
 import {
   ZOOM_MAX,
   ZOOM_MIN,
@@ -99,12 +100,15 @@ export function DesignEditorShell({
   slideId?: string | null;
   previewSlides?: DesignPreviewSlide[];
 }) {
-  const resolvedDesign = ensureSmartDesign(
-    resolveSlideDesign({
-      content_data: contentData,
-      design_data: designData,
-    }),
-    slideName,
+  const resolvedDesign = adaptDesignToOrientation(
+    ensureSmartDesign(
+      resolveSlideDesign({
+        content_data: contentData,
+        design_data: designData,
+      }),
+      slideName,
+    ),
+    orientation,
   );
 
   /** Never call parent setState synchronously from this component's render/updaters. */
@@ -136,36 +140,59 @@ export function DesignEditorShell({
   const [clipboard, setClipboard] = useState<DesignElement[]>([]);
   const [loadedSlideId, setLoadedSlideId] = useState<string | null>(null);
   const [workingDesign, setWorkingDesign] = useState<DesignData>(resolvedDesign);
+  const [appliedOrientation, setAppliedOrientation] =
+    useState<Orientation>(orientation);
   const interactionBaselineRef = useRef<DesignHistorySnapshot | null>(null);
 
   const elements = history.present.elements;
   const selectedIds = history.present.selectedIds;
 
-  // Reload element state only when the active slide identity changes
-  useEffect(() => {
-    const id = slideId ?? "__none__";
-    if (id === loadedSlideId) return;
-    const next = ensureSmartDesign(
-      resolveSlideDesign({
-        content_data: contentData,
-        design_data: designData,
-      }),
-      slideName,
-    );
-    setLoadedSlideId(id);
+  function applyDesignSnapshot(next: DesignData, keepSelection = false) {
     setWorkingDesign(next);
     setLayoutLocked(next.layoutLocked === true);
     interactionBaselineRef.current = null;
     setHistory(
       createHistory({
         elements: getElements(next),
-        selectedIds: [],
+        selectedIds: keepSelection ? selectedIds : [],
       }),
     );
+  }
+
+  // Reload element state only when the active slide identity changes
+  useEffect(() => {
+    const id = slideId ?? "__none__";
+    if (id === loadedSlideId) return;
+    const next = adaptDesignToOrientation(
+      ensureSmartDesign(
+        resolveSlideDesign({
+          content_data: contentData,
+          design_data: designData,
+        }),
+        slideName,
+      ),
+      orientation,
+    );
+    setLoadedSlideId(id);
+    setAppliedOrientation(orientation);
+    applyDesignSnapshot(next);
     setPan({ x: 0, y: 0 });
     setPropTab("content");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slideId]);
+
+  // When loop orientation flips, remap the open slide to fill the new artboard.
+  useEffect(() => {
+    if (orientation === appliedOrientation) return;
+    const adapted = adaptDesignToOrientation(
+      withElements(workingDesign, elements),
+      orientation,
+    );
+    setAppliedOrientation(orientation);
+    applyDesignSnapshot(adapted);
+    notifyParent(adapted);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orientation]);
 
   const selectedElements = useMemo(
     () => elements.filter((el) => selectedIds.includes(el.id)),

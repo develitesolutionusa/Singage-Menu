@@ -65,3 +65,23 @@ body {
     transform: translateY(-70%);
   }
 }
+
+/* —— Digital Menu Board engine —— */
+@keyframes menu-board-ticker {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.menu-board-ticker-track {
+  animation: menu-board-ticker 28s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-board-ticker-track {
+    animation: none;
+  }
+}

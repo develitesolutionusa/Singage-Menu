@@ -2,12 +2,18 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { isOrgContext, requireOrg } from "@/lib/clerk";
 import { createServiceClient } from "@/lib/supabase";
-import { TEMPLATE_INDUSTRIES } from "@/lib/templates";
+import {
+  DEFAULT_TEMPLATE_INDUSTRY,
+  TEMPLATE_INDUSTRIES,
+} from "@/lib/templates";
 import type { DesignData, Template, TemplateIndustry } from "@/types/db";
 
 const querySchema = z.object({
   q: z.string().trim().max(120).optional(),
-  industry: z.enum(TEMPLATE_INDUSTRIES as [TemplateIndustry, ...TemplateIndustry[]]).optional(),
+  industry: z
+    .enum(TEMPLATE_INDUSTRIES as [TemplateIndustry, ...TemplateIndustry[]])
+    .optional()
+    .default(DEFAULT_TEMPLATE_INDUSTRY),
   category: z.string().trim().max(80).optional(),
   favoritesOnly: z
     .enum(["true", "false"])
@@ -41,10 +47,10 @@ export async function GET(request: Request) {
     .from("templates")
     .select("*")
     .eq("is_published", true)
+    .eq("industry", industry)
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
 
-  if (industry) query = query.eq("industry", industry);
   if (category) query = query.eq("category", category);
 
   const { data: templates, error } = await query;
@@ -92,11 +98,7 @@ export async function GET(request: Request) {
     .filter((t) => (favoritesOnly ? t.is_favorited : true));
 
   const categories = Array.from(
-    new Set(
-      ((templates ?? []) as Template[])
-        .filter((t) => !industry || t.industry === industry)
-        .map((t) => t.category),
-    ),
+    new Set(((templates ?? []) as Template[]).map((t) => t.category)),
   ).sort((a, b) => a.localeCompare(b));
 
   return NextResponse.json({

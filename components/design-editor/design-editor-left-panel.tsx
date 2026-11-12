@@ -4,7 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Search, Sparkles, Star } from "lucide-react";
 import { Input, Select } from "@/components/ui";
 import { TemplatePreview } from "@/components/templates/template-preview";
-import { TEMPLATE_INDUSTRIES, type TemplateListItem } from "@/lib/templates";
+import {
+  DEFAULT_TEMPLATE_INDUSTRY,
+  type TemplateListItem,
+} from "@/lib/templates";
 import { cn } from "@/lib/utils";
 import {
   DESIGN_BLOCKS,
@@ -29,7 +32,6 @@ export function DesignEditorLeftPanel({
 }) {
   const [tab, setTab] = useState<LeftTab>("templates");
   const [q, setQ] = useState("");
-  const [industry, setIndustry] = useState("");
   const [category, setCategory] = useState("");
   const [templates, setTemplates] = useState<TemplateListItem[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -43,8 +45,8 @@ export function DesignEditorLeftPanel({
         setLoading(true);
         try {
           const params = new URLSearchParams();
+          params.set("industry", DEFAULT_TEMPLATE_INDUSTRY);
           if (q.trim()) params.set("q", q.trim());
-          if (industry) params.set("industry", industry);
           if (category) params.set("category", category);
           const res = await fetch(`/api/templates?${params.toString()}`);
           const json = await res.json();
@@ -59,11 +61,7 @@ export function DesignEditorLeftPanel({
       })();
     }, 180);
     return () => window.clearTimeout(handle);
-  }, [tab, q, industry, category]);
-
-  useEffect(() => {
-    setCategory("");
-  }, [industry]);
+  }, [tab, q, category]);
 
   const popular = useMemo(() => templates.slice(0, 4), [templates]);
   const recent = useMemo(
@@ -124,18 +122,6 @@ export function DesignEditorLeftPanel({
                 className="h-8 pl-8 text-xs"
               />
             </div>
-            <Select
-              value={industry}
-              onChange={(e) => setIndustry(e.target.value)}
-              className="h-8 w-full text-xs"
-            >
-              <option value="">All industries</option>
-              {TEMPLATE_INDUSTRIES.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </Select>
             <Select
               value={category}
               onChange={(e) => setCategory(e.target.value)}

@@ -5,6 +5,13 @@ import {
   getElements,
   withElements,
 } from "@/lib/design-elements";
+import { buildDishCategoryBoards } from "@/lib/dish-category-boards";
+import { buildElegantFoodMenuCatalog } from "@/lib/elegant-food-menu";
+import { buildMixMenuCatalog } from "@/lib/mix-menu";
+import { applyContentToZoneTemplate } from "@/lib/menu-board/apply-zone-content";
+import { buildZoneBoardCatalog } from "@/lib/menu-board/zone-board-catalog";
+import type { ZoneTemplate } from "@/lib/menu-board/zone-schema";
+import { buildPremiumMenuBoards } from "@/lib/premium-menu-boards";
 import { buildDistinctRestaurantTemplates } from "@/lib/restaurant-pro-templates";
 import type { DesignData } from "@/types/db";
 
@@ -110,12 +117,54 @@ export function applyContentValues(
   }
 
   const nextElements = elements.map((el) => byId.get(el.id) ?? el);
+
+  // Keep dual-orientation layout packs in sync with content edits.
+  let orientationLayouts = data.orientationLayouts;
+  if (orientationLayouts && typeof orientationLayouts === "object") {
+    const nextPacks: Record<string, unknown> = {};
+    for (const [key, pack] of Object.entries(
+      orientationLayouts as Record<string, { elements?: DesignElement[] }>,
+    )) {
+      if (!pack || !Array.isArray(pack.elements)) {
+        nextPacks[key] = pack;
+        continue;
+      }
+      const packById = new Map(
+        pack.elements.map((el) => [el.id, { ...el, props: { ...el.props } }]),
+      );
+      for (const field of fields) {
+        const value = values[field.id] ?? field.defaultValue;
+        for (const binding of field.bindings) {
+          const el = packById.get(binding.elementId);
+          if (!el) continue;
+          el.props = applyBindingValue(el.props, binding.prop, value);
+          packById.set(binding.elementId, el);
+        }
+      }
+      nextPacks[key] = {
+        ...pack,
+        elements: pack.elements.map((el) => packById.get(el.id) ?? el),
+      };
+    }
+    orientationLayouts = nextPacks;
+  }
+
+  let zoneTemplate = data.zoneTemplate;
+  if (zoneTemplate && typeof zoneTemplate === "object") {
+    zoneTemplate = applyContentToZoneTemplate(
+      zoneTemplate as ZoneTemplate,
+      values,
+    );
+  }
+
   return {
     ...withElements(data, nextElements),
     smart: true,
     layoutLocked: data.layoutLocked === true,
     editableFields: fields,
     contentValues: values,
+    orientationLayouts,
+    ...(zoneTemplate ? { zoneTemplate } : null),
   };
 }
 
@@ -188,6 +237,11 @@ export function buildRestaurantSmartTemplates(): Record<string, DesignData> {
   return {
     ...buildDistinctRestaurantTemplates(),
     "Premium Food Special": buildPremiumFoodSpecial(),
+    ...buildPremiumMenuBoards(),
+    ...buildElegantFoodMenuCatalog(),
+    ...buildDishCategoryBoards(),
+    ...buildMixMenuCatalog(),
+    ...buildZoneBoardCatalog(),
   };
 }
 

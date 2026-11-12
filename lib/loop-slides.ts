@@ -1,8 +1,10 @@
-import type { DesignData, Template } from "@/types/db";
+import { adaptDesignToOrientation } from "@/lib/design-orientation";
+import type { DesignData, Orientation, Template } from "@/types/db";
 
 /**
  * Build a loop slide insert payload from a template.
  * Template → Template Instance (loop_item) without duplicating master schema.
+ * Remaps master landscape layouts into the loop orientation so portrait is complete.
  */
 export function buildTemplateSlideInsert(input: {
   orgId: string;
@@ -16,8 +18,13 @@ export function buildTemplateSlideInsert(input: {
     | "default_duration_seconds"
   >;
   position: number;
+  orientation?: Orientation;
 }) {
-  const content = (input.template.design_data ?? {}) as DesignData;
+  const raw = (input.template.design_data ?? {}) as DesignData;
+  const content = adaptDesignToOrientation(
+    raw,
+    input.orientation ?? "landscape",
+  );
   return {
     clerk_org_id: input.orgId,
     loop_id: input.loopId,

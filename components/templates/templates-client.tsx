@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Heart, LayoutTemplate, Search, X } from "lucide-react";
 import { toast } from "sonner";
@@ -12,7 +12,10 @@ import {
   Select,
 } from "@/components/ui";
 import { TemplatePreview } from "@/components/templates/template-preview";
-import { TEMPLATE_INDUSTRIES, type TemplateListItem } from "@/lib/templates";
+import {
+  DEFAULT_TEMPLATE_INDUSTRY,
+  type TemplateListItem,
+} from "@/lib/templates";
 import { cn } from "@/lib/utils";
 import type { Loop, Orientation } from "@/types/db";
 
@@ -25,7 +28,6 @@ export function TemplatesClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
-  const [industry, setIndustry] = useState<string>("");
   const [category, setCategory] = useState<string>("");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [preview, setPreview] = useState<TemplateListItem | null>(null);
@@ -46,8 +48,8 @@ export function TemplatesClient() {
     setError(null);
     try {
       const params = new URLSearchParams();
+      params.set("industry", DEFAULT_TEMPLATE_INDUSTRY);
       if (q.trim()) params.set("q", q.trim());
-      if (industry) params.set("industry", industry);
       if (category) params.set("category", category);
       if (favoritesOnly) params.set("favoritesOnly", "true");
 
@@ -69,19 +71,7 @@ export function TemplatesClient() {
     }, 200);
     return () => window.clearTimeout(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, industry, category, favoritesOnly]);
-
-  useEffect(() => {
-    setCategory("");
-  }, [industry]);
-
-  const industryCounts = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const t of templates) {
-      map.set(t.industry, (map.get(t.industry) ?? 0) + 1);
-    }
-    return map;
-  }, [templates]);
+  }, [q, category, favoritesOnly]);
 
   async function toggleFavorite(template: TemplateListItem) {
     setTogglingFavoriteId(template.id);
@@ -178,7 +168,7 @@ export function TemplatesClient() {
     <div>
       <PageHeader
         title="Template Library"
-        description="Start from industry-ready layouts, then add them to a loop."
+        description="Restaurant & Food layouts you can drop into a loop."
       />
 
       <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -191,18 +181,6 @@ export function TemplatesClient() {
             className="pl-9"
           />
         </div>
-        <Select
-          value={industry}
-          onChange={(e) => setIndustry(e.target.value)}
-          className="w-full lg:w-52"
-        >
-          <option value="">All industries</option>
-          {TEMPLATE_INDUSTRIES.map((item) => (
-            <option key={item} value={item}>
-              {item}
-            </option>
-          ))}
-        </Select>
         <Select
           value={category}
           onChange={(e) => setCategory(e.target.value)}
@@ -249,9 +227,7 @@ export function TemplatesClient() {
           description={
             favoritesOnly
               ? "You haven’t favorited any templates yet."
-              : industry
-                ? `No starter templates for ${industry} yet. Try Restaurant & Food.`
-                : "Try adjusting your search or filters."
+              : "Try adjusting your search or category filter."
           }
         />
       ) : (
@@ -341,13 +317,10 @@ export function TemplatesClient() {
         </div>
       )}
 
-      {!loading && !industry && templates.length > 0 ? (
+      {!loading && templates.length > 0 ? (
         <p className="mt-4 text-xs text-zinc-400">
-          Showing {templates.length} templates
-          {industryCounts.size
-            ? ` across ${industryCounts.size} industr${industryCounts.size === 1 ? "y" : "ies"}`
-            : ""}
-          .
+          Showing {templates.length} Restaurant & Food template
+          {templates.length === 1 ? "" : "s"}.
         </p>
       ) : null}
 

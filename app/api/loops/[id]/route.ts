@@ -50,14 +50,29 @@ export async function PATCH(request: Request, { params }: Params) {
   }
 
   const supabase = createServiceClient();
+  const { data: existing, error: existingError } = await supabase
+    .from("loops")
+    .select("*")
+    .eq("clerk_org_id", ctx.orgId)
+    .eq("id", id)
+    .maybeSingle();
+
+  if (existingError) {
+    return NextResponse.json({ error: existingError.message }, { status: 500 });
+  }
+  if (!existing) {
+    return NextResponse.json({ error: "Loop not found" }, { status: 404 });
+  }
+
+  const nextName = body.name ?? existing.name;
+  const nextOrientation = body.orientation ?? existing.orientation;
+  if (nextName === existing.name && nextOrientation === existing.orientation) {
+    return NextResponse.json({ loop: existing });
+  }
+
   const { data, error } = await supabase
     .from("loops")
-    .update({
-      ...(body.name !== undefined ? { name: body.name } : {}),
-      ...(body.orientation !== undefined
-        ? { orientation: body.orientation }
-        : {}),
-    })
+    .update({ name: nextName, orientation: nextOrientation })
     .eq("clerk_org_id", ctx.orgId)
     .eq("id", id)
     .select("*")

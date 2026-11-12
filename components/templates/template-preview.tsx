@@ -5,9 +5,10 @@ import {
   getArtboardSize,
   getElements,
 } from "@/lib/design-elements";
+import { adaptDesignToOrientation } from "@/lib/design-orientation";
 import { buildDynamicContext, type OrgProfile } from "@/lib/dynamic-data";
 import { cn } from "@/lib/utils";
-import type { DesignData } from "@/types/db";
+import type { DesignData, Orientation } from "@/types/db";
 
 function themeOf(data: DesignData) {
   return {
@@ -24,25 +25,36 @@ export function TemplatePreview({
   className,
   compact = false,
   orgProfile = null,
+  orientation,
 }: {
   data: DesignData;
   className?: string;
   compact?: boolean;
   /** Used to resolve restaurant dynamic bindings in canvas previews. */
   orgProfile?: OrgProfile | null;
+  /** Force preview into this artboard (defaults to the design's orientation). */
+  orientation?: Orientation;
 }) {
-  const theme = themeOf(data);
-  const layout = data.layout ?? "promo-hero";
-  const elements = getElements(data).filter((el) => !el.hidden);
+  const resolvedOrientation: Orientation =
+    orientation ??
+    (data.orientation === "portrait" ? "portrait" : "landscape");
+  const previewData = adaptDesignToOrientation(data, resolvedOrientation);
+  const theme = themeOf(previewData);
+  const layout = previewData.layout ?? "promo-hero";
+  const elements = getElements(previewData).filter((el) => !el.hidden);
 
   // Prefer schema-driven canvas elements (Smart Templates) over legacy layouts.
   if (elements.length > 0) {
-    const artboard = getArtboardSize(
-      data.orientation === "portrait" ? "portrait" : "landscape",
-    );
-    const dataContext = buildDynamicContext(data, orgProfile);
+    const artboard = getArtboardSize(resolvedOrientation);
+    const dataContext = buildDynamicContext(previewData, orgProfile);
     const sorted = [...elements].sort((a, b) => a.zIndex - b.zIndex);
-    const scale = compact ? 0.22 : 0.35;
+    const scale = compact
+      ? resolvedOrientation === "portrait"
+        ? 0.16
+        : 0.22
+      : resolvedOrientation === "portrait"
+        ? 0.28
+        : 0.35;
 
     return (
       <div
