@@ -253,30 +253,6 @@ const META: Record<string, TemplateSeedMeta> = {
     default_duration_seconds: 12,
     sort_order: -39,
   },
-  "Wall Starters Board": {
-    industry: "Restaurant & Food",
-    category: "Menu",
-    tags: ["zone", "wall", "portrait", "starters", "multi-screen"],
-    orientation: "portrait",
-    default_duration_seconds: 18,
-    sort_order: -38,
-  },
-  "Wall Mains Board": {
-    industry: "Restaurant & Food",
-    category: "Menu",
-    tags: ["zone", "wall", "portrait", "mains", "multi-screen"],
-    orientation: "portrait",
-    default_duration_seconds: 18,
-    sort_order: -37,
-  },
-  "Wall Specials Board": {
-    industry: "Restaurant & Food",
-    category: "Special",
-    tags: ["zone", "wall", "portrait", "specials", "multi-screen"],
-    orientation: "portrait",
-    default_duration_seconds: 18,
-    sort_order: -36,
-  },
 };
 
 async function upsertTemplate(name: string, design: DesignData) {
@@ -341,6 +317,25 @@ async function upsertTemplate(name: string, design: DesignData) {
   console.log(`  + inserted ${data.name} v${data.version} (${data.id})`);
 }
 
+const REMOVED_TEMPLATE_NAMES = [
+  "Wall Starters Board",
+  "Wall Mains Board",
+  "Wall Specials Board",
+];
+
+async function unpublishRemovedTemplates() {
+  const { data, error } = await supabase
+    .from("templates")
+    .update({ is_published: false })
+    .in("name", REMOVED_TEMPLATE_NAMES)
+    .is("clerk_org_id", null)
+    .select("id, name");
+  if (error) throw error;
+  for (const row of data ?? []) {
+    console.log(`  − unpublished ${row.name} (${row.id})`);
+  }
+}
+
 async function main() {
   const catalog = buildRestaurantSmartTemplates();
   const names = Object.keys(catalog);
@@ -349,6 +344,9 @@ async function main() {
   for (const name of names) {
     await upsertTemplate(name, catalog[name]);
   }
+
+  console.log("Unpublishing removed templates…");
+  await unpublishRemovedTemplates();
 
   console.log("Done.");
 }
