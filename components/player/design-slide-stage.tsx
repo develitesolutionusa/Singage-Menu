@@ -7,12 +7,14 @@ import { SafeAreaOverlay } from "@/components/menu-board/preview-toolbar";
 import { ZoneBoardStage } from "@/components/menu-board/zone-board-stage";
 import { TemplatePreview } from "@/components/templates/template-preview";
 import {
-  getArtboardSize,
   getElements,
   type DesignAnimation,
   type DesignElement,
 } from "@/lib/design-elements";
-import { adaptDesignToOrientation } from "@/lib/design-orientation";
+import {
+  adaptDesignToOrientation,
+  measureArtboard,
+} from "@/lib/design-orientation";
 import { isZoneBoardDesign } from "@/lib/menu-board/to-design-data";
 import { ensureSmartDesign } from "@/lib/smart-templates";
 import { useViewportOrientation } from "@/lib/use-viewport-orientation";
@@ -91,7 +93,13 @@ export function DesignSlideStage({
   const design = adaptDesignToOrientation(ensureSmartDesign(data), orientation);
 
   // Zone menu boards play through ScreenStage + ZoneRenderer (TV-faithful).
-  if (isZoneBoardDesign(design) && design.zoneTemplate) {
+  // A menu card that is not a zone row (added on a board with no menu list)
+  // has to paint from canvas elements so the new item stays visible.
+  const zoneCards = getElements(design).filter(
+    (el) => el.type === "menu-card" && !el.hidden,
+  );
+  const zoneCoversCards = zoneCards.every((el) => el.id.includes("_item_"));
+  if (isZoneBoardDesign(design) && design.zoneTemplate && zoneCoversCards) {
     return (
       <div ref={hostRef} className={cn("relative h-full w-full", className)}>
         <ZoneBoardStage data={design} orientation={orientation} />
@@ -106,7 +114,7 @@ export function DesignSlideStage({
     if (!activeDeviceOrientation || behavior === "all") return true;
     return behavior === activeDeviceOrientation;
   });
-  const artboard = getArtboardSize(orientation);
+  const artboard = measureArtboard(design, orientation, elements);
   const sorted = [...elements].sort((a, b) => a.zIndex - b.zIndex);
   const letterbox = design.theme?.bg ?? "#0f172a";
 

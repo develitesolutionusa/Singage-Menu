@@ -1,10 +1,13 @@
 import type { DesignElement } from "@/lib/design-elements";
+import type { DesignData } from "@/types/db";
 
 const MAX_HISTORY = 80;
 
 export type DesignHistorySnapshot = {
   elements: DesignElement[];
   selectedIds: string[];
+  /** Present when a change also updates artboard size, fields, or zones. */
+  design?: DesignData;
 };
 
 export type DesignHistoryState = {

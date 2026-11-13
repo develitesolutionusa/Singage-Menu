@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ImagePlus, Loader2, Lock, Unlock } from "lucide-react";
+import { ImagePlus, Loader2, Lock, Plus, Unlock } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui";
 import {
@@ -66,13 +66,40 @@ export function SmartTemplateBanner({
   );
 }
 
+export function AddItemsButton({
+  onClick,
+  disabled,
+  className,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-teal-700 px-3 text-xs font-semibold text-white hover:bg-teal-600 disabled:pointer-events-none disabled:opacity-50",
+        className,
+      )}
+    >
+      <Plus className="h-3.5 w-3.5" />
+      Add items
+    </button>
+  );
+}
+
 export function SmartContentFields({
   data,
   onChangeField,
+  onAddItem,
   disabled,
 }: {
   data: DesignData | null | undefined;
   onChangeField: (fieldId: string, value: string) => void;
+  onAddItem?: () => void;
   disabled?: boolean;
 }) {
   const fields = getEditableFields(data);
@@ -80,12 +107,17 @@ export function SmartContentFields({
 
   if (!fields.length) {
     return (
-      <div className="rounded-lg border border-dashed border-zinc-200 px-3 py-8 text-center">
-        <p className="text-sm font-medium text-zinc-700">No smart fields</p>
-        <p className="mt-1 text-xs text-zinc-500">
-          This slide is not a Smart Template. Add a restaurant template from the
-          Template Library.
-        </p>
+      <div className="space-y-3">
+        <div className="rounded-lg border border-dashed border-zinc-200 px-3 py-8 text-center">
+          <p className="text-sm font-medium text-zinc-700">No smart fields</p>
+          <p className="mt-1 text-xs text-zinc-500">
+            This slide is not a Smart Template. Add a restaurant template from
+            the Template Library, or add a menu item below.
+          </p>
+        </div>
+        {onAddItem ? (
+          <AddItemsButton onClick={onAddItem} disabled={disabled} className="w-full" />
+        ) : null}
       </div>
     );
   }
@@ -107,6 +139,9 @@ export function SmartContentFields({
           onChange={(value) => onChangeField(field.id, value)}
         />
       ))}
+      {onAddItem ? (
+        <AddItemsButton onClick={onAddItem} disabled={disabled} className="w-full" />
+      ) : null}
     </div>
   );
 }

@@ -46,11 +46,13 @@ export function applyContentToZoneTemplate(
         const tagline = values[`menu_tag_${zone.id}`];
         const items = zone.items.map((item) => {
           const rowId = `${zone.id}_item_${item.id}`;
+          const image = values[`${rowId}_image`];
           return {
             ...item,
             name: values[`${rowId}_name`] ?? item.name,
             description: values[`${rowId}_desc`] ?? item.description,
             price: values[`${rowId}_price`] ?? item.price,
+            ...(image != null ? { image } : null),
           };
         });
         return {

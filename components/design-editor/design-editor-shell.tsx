@@ -19,8 +19,12 @@ import {
 } from "@/components/design-editor/design-editor-toolbar";
 import type { DesignBlockType } from "@/components/design-editor/blocks";
 import type { TemplateListItem } from "@/lib/templates";
+import { appendMenuItem } from "@/lib/append-menu-item";
 import { resolveSlideDesign } from "@/lib/loop-slides";
-import { adaptDesignToOrientation } from "@/lib/design-orientation";
+import {
+  adaptDesignToOrientation,
+  measureArtboard,
+} from "@/lib/design-orientation";
 import {
   ZOOM_MAX,
   ZOOM_MIN,
@@ -28,7 +32,6 @@ import {
   clamp,
   createElementFromBlock,
   duplicateElement,
-  getArtboardSize,
   getElements,
   withElements,
   type DesignElement,
@@ -400,7 +403,9 @@ export function DesignEditorShell({
     const next = undoHistory(history);
     if (!next) return;
     setHistory(next);
-    const nextData = withElements(workingDesign, next.present.elements);
+    const nextData =
+      next.present.design ??
+      withElements(workingDesign, next.present.elements);
     setWorkingDesign(nextData);
     notifyParent(nextData);
   }, [history, notifyParent, workingDesign]);
@@ -409,10 +414,37 @@ export function DesignEditorShell({
     const next = redoHistory(history);
     if (!next) return;
     setHistory(next);
-    const nextData = withElements(workingDesign, next.present.elements);
+    const nextData =
+      next.present.design ??
+      withElements(workingDesign, next.present.elements);
     setWorkingDesign(nextData);
     notifyParent(nextData);
   }, [history, notifyParent, workingDesign]);
+
+  const handleAddItem = useCallback(() => {
+    const current = withElements(workingDesign, elements);
+    const { data, selectedIds: ids } = appendMenuItem(current, orientation);
+    setHistory((prev) => {
+      const stamped = {
+        ...prev.present,
+        design: structuredClone(withElements(workingDesign, prev.present.elements)),
+      };
+      return pushHistory(
+        { ...prev, present: stamped },
+        {
+          elements: cloneElements(getElements(data)),
+          selectedIds: ids,
+          design: structuredClone(data),
+        },
+      );
+    });
+    setWorkingDesign(data);
+    setPropTab("content");
+    notifyParent(data);
+    toast.success("Item added", {
+      description: "Picture, description, and price are at the end of the list.",
+    });
+  }, [elements, notifyParent, orientation, workingDesign]);
 
   // Custom events from context toolbar
   useEffect(() => {
@@ -496,7 +528,7 @@ export function DesignEditorShell({
           e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
         const dy =
           e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
-        const artboard = getArtboardSize(orientation);
+        const artboard = measureArtboard(workingDesign, orientation, elements);
         commit(
           elements.map((el) => {
             if (!selectedIds.includes(el.id) || el.locked) return el;
@@ -534,7 +566,7 @@ export function DesignEditorShell({
       });
       return;
     }
-    const artboard = getArtboardSize(orientation);
+    const artboard = measureArtboard(workingDesign, orientation, elements);
     const maxZ = elements.reduce((m, el) => Math.max(m, el.zIndex), 0);
     const created = createElementFromBlock(
       type,
@@ -639,6 +671,7 @@ export function DesignEditorShell({
             onPanChange={setPan}
             interactionLocked={layoutLocked}
             showSafeArea={showSafeArea}
+            onAddItem={handleAddItem}
           />
 
           <DesignLayersPanel
@@ -659,6 +692,7 @@ export function DesignEditorShell({
           layoutLocked={layoutLocked}
           designData={workingDesign}
           onSmartFieldChange={handleSmartFieldChange}
+          onAddItem={handleAddItem}
           onPatchElement={handlePatchElement}
           layerCount={elements.length}
         />

@@ -187,7 +187,16 @@ export function MenuListZoneView({
               data-menu-item
               className="py-[0.45em]"
             >
-              <div className="flex min-w-0 items-baseline gap-[0.5cqw]">
+              <div className="flex min-w-0 items-start gap-[0.5cqw]">
+                {item.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={item.image}
+                    alt=""
+                    draggable={false}
+                    className="mt-[0.15em] h-[2.4em] w-[2.4em] shrink-0 rounded-[0.35em] object-cover"
+                  />
+                ) : null}
                 {showIcons ? (
                   <span
                     className="mt-[0.15em] inline-flex h-[0.85em] w-[0.85em] shrink-0 items-center justify-center rounded-full text-[0.55em] font-bold text-white"
@@ -244,7 +253,11 @@ export function MenuListZoneView({
                   style={{
                     color: mutedColor,
                     fontSize: "clamp(10px, 1cqw, 15px)",
-                    paddingLeft: showIcons ? "1.4em" : 0,
+                    paddingLeft: item.image
+                      ? "2.9em"
+                      : showIcons
+                        ? "1.4em"
+                        : 0,
                   }}
                 >
                   {item.description}

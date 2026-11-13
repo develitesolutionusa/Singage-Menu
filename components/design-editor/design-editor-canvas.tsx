@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { DesignContextToolbar } from "@/components/design-editor/design-context-toolbar";
 import { DesignElementView } from "@/components/design-editor/design-element-view";
+import { AddItemsButton } from "@/components/design-editor/smart-content-panel";
 import { TemplatePreview } from "@/components/templates/template-preview";
 import {
   BLOCK_DRAG_MIME,
@@ -14,7 +15,6 @@ import {
   computeAlignGuides,
   constrainElement,
   createElementFromBlock,
-  getArtboardSize,
   isDesignBlockType,
   selectionBounds,
   snapWithThreshold,
@@ -22,6 +22,8 @@ import {
 import {
   type OrgProfile,
 } from "@/lib/dynamic-data";
+import { menuItemInsertPoint } from "@/lib/append-menu-item";
+import { measureArtboard } from "@/lib/design-orientation";
 import { cn } from "@/lib/utils";
 import type { DesignData, Orientation } from "@/types/db";
 
@@ -70,6 +72,7 @@ export function DesignEditorCanvas({
   interactionLocked = false,
   orgProfile = null,
   showSafeArea = false,
+  onAddItem,
 }: {
   orientation: Orientation;
   zoom: number;
@@ -89,8 +92,11 @@ export function DesignEditorCanvas({
   orgProfile?: OrgProfile | null;
   /** 5% TV overscan guide on the artboard — every template */
   showSafeArea?: boolean;
+  /** Appends a picture / description / price row and grows the template. */
+  onAddItem?: () => void;
 }) {
-  const artboard = getArtboardSize(orientation);
+  const artboard = measureArtboard(designData, orientation, elements);
+  const insertPoint = menuItemInsertPoint(elements);
   const stageRef = useRef<HTMLDivElement>(null);
   const artboardRef = useRef<HTMLDivElement>(null);
   const [guides, setGuides] = useState<AlignGuide[]>([]);
@@ -541,6 +547,22 @@ export function DesignEditorCanvas({
               </>
             ) : null}
           </div>
+          {onAddItem ? (
+            <div
+              className="mt-3 flex"
+              style={{
+                width: artboard.width,
+                paddingLeft: insertPoint ? insertPoint.x : 0,
+              }}
+            >
+              <div
+                className="flex justify-center"
+                style={{ width: insertPoint ? insertPoint.width : artboard.width }}
+              >
+                <AddItemsButton onClick={onAddItem} />
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

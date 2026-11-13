@@ -139,6 +139,32 @@ function remapElement(
   };
 }
 
+/**
+ * Artboard the editor and player should paint.
+ * Starts from the orientation size, then grows with any element that
+ * hangs past the bottom (added menu items, stretched backgrounds).
+ */
+export function measureArtboard(
+  data: DesignData | null | undefined,
+  orientation: Orientation,
+  elements?: DesignElement[],
+): ArtboardSize {
+  const standard = getArtboardSize(orientation);
+  const storedWidth =
+    typeof data?.artboardWidth === "number" && data.artboardWidth > 0
+      ? data.artboardWidth
+      : standard.width;
+  const width =
+    Math.abs(storedWidth - standard.width) < 2 ? storedWidth : standard.width;
+  const els = elements ?? getElements(data);
+  let height = standard.height;
+  for (const el of els) {
+    if (el.hidden) continue;
+    height = Math.max(height, el.y + el.height);
+  }
+  return { width, height: Math.ceil(height) };
+}
+
 export function designMatchesOrientation(
   data: DesignData | null | undefined,
   orientation: Orientation,
@@ -146,10 +172,8 @@ export function designMatchesOrientation(
   if (!data) return true;
   const source = inferDesignArtboard(data);
   const target = getArtboardSize(orientation);
-  return (
-    Math.abs(source.width - target.width) < 1 &&
-    Math.abs(source.height - target.height) < 1
-  );
+  // Same width means this orientation, even when added items made it taller.
+  return Math.abs(source.width - target.width) < 2;
 }
 
 /**
@@ -191,11 +215,12 @@ export function adaptDesignToOrientation(
   }
 
   if (designMatchesOrientation(data, orientation)) {
+    const size = measureArtboard(data, orientation);
     return {
       ...data,
       orientation,
-      artboardWidth: target.width,
-      artboardHeight: target.height,
+      artboardWidth: size.width,
+      artboardHeight: size.height,
     };
   }
 

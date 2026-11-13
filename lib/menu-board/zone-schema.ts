@@ -69,6 +69,8 @@ export const menuItemSchema = z.object({
   name: z.string(),
   description: z.string().optional(),
   price: z.string(),
+  /** Optional dish photo. Omitted items stay text-only. */
+  image: z.string().optional(),
   badges: z.array(menuItemBadgeSchema).optional(),
   category: z.string().optional(),
 });

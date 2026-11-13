@@ -1,9 +1,9 @@
 import {
-  getArtboardSize,
   getElements,
   MIN_ELEMENT_SIZE,
   type DesignElement,
 } from "@/lib/design-elements";
+import { measureArtboard } from "@/lib/design-orientation";
 import {
   applyContentValues,
   getContentValues,
@@ -343,7 +343,11 @@ export function validateDesignForPublish(
     });
   }
 
-  const artboard = getArtboardSize(options?.orientation ?? "landscape");
+  const artboard = measureArtboard(
+    normalized,
+    options?.orientation ?? "landscape",
+    elements,
+  );
   for (const el of elements) {
     validateElementDimensions(el, artboard, issues);
     validateElementContent(el, issues);

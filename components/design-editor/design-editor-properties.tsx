@@ -5,6 +5,7 @@ import { ImagePlus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Input, Select } from "@/components/ui";
 import {
+  AddItemsButton,
   SmartContentFields,
   SmartTemplateBanner,
 } from "@/components/design-editor/smart-content-panel";
@@ -36,6 +37,7 @@ export function DesignEditorProperties({
   layoutLocked,
   designData,
   onSmartFieldChange,
+  onAddItem,
   onPatchElement,
   layerCount,
 }: {
@@ -45,6 +47,7 @@ export function DesignEditorProperties({
   layoutLocked: boolean;
   designData?: DesignData | null;
   onSmartFieldChange?: (fieldId: string, value: string) => void;
+  onAddItem?: () => void;
   onPatchElement?: (
     patch: Partial<DesignElement> & { props?: Partial<DesignElementProps> },
     options?: ElementPatchOptions,
@@ -119,6 +122,7 @@ export function DesignEditorProperties({
           <SmartContentFields
             data={designData}
             onChangeField={onSmartFieldChange}
+            onAddItem={onAddItem}
           />
         ) : !selectedElement || !block ? (
           <div className="rounded-lg border border-dashed border-zinc-200 px-3 py-10 text-center">
@@ -128,6 +132,9 @@ export function DesignEditorProperties({
                 ? "Edit Smart Template fields above, or select a canvas element."
                 : "Select a block to edit Content, Style, and Advanced settings."}
             </p>
+            {onAddItem ? (
+              <AddItemsButton onClick={onAddItem} className="mt-4 w-full" />
+            ) : null}
           </div>
         ) : (
           <div className="space-y-4">
@@ -174,6 +181,7 @@ export function DesignEditorProperties({
                 <SmartContentFields
                   data={designData}
                   onChangeField={onSmartFieldChange}
+                  onAddItem={onAddItem}
                 />
               </div>
             ) : null}

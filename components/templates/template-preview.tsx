@@ -1,11 +1,11 @@
 "use client";
 
 import { DesignElementView } from "@/components/design-editor/design-element-view";
+import { getElements } from "@/lib/design-elements";
 import {
-  getArtboardSize,
-  getElements,
-} from "@/lib/design-elements";
-import { adaptDesignToOrientation } from "@/lib/design-orientation";
+  adaptDesignToOrientation,
+  measureArtboard,
+} from "@/lib/design-orientation";
 import { buildDynamicContext, type OrgProfile } from "@/lib/dynamic-data";
 import { cn } from "@/lib/utils";
 import type { DesignData, Orientation } from "@/types/db";
@@ -45,7 +45,11 @@ export function TemplatePreview({
 
   // Prefer schema-driven canvas elements (Smart Templates) over legacy layouts.
   if (elements.length > 0) {
-    const artboard = getArtboardSize(resolvedOrientation);
+    const artboard = measureArtboard(
+      previewData,
+      resolvedOrientation,
+      elements,
+    );
     const dataContext = buildDynamicContext(previewData, orgProfile);
     const sorted = [...elements].sort((a, b) => a.zIndex - b.zIndex);
     const scale = compact
