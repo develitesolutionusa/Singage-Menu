@@ -7,6 +7,7 @@ import {
 } from "@/lib/design-elements";
 import { buildDishCategoryBoards } from "@/lib/dish-category-boards";
 import { buildElegantFoodMenuCatalog } from "@/lib/elegant-food-menu";
+import { buildGourmetPizzaBoardCatalog } from "@/lib/gourmet-pizza-board";
 import { buildMixMenuCatalog } from "@/lib/mix-menu";
 import { applyContentToZoneTemplate } from "@/lib/menu-board/apply-zone-content";
 import { buildZoneBoardCatalog } from "@/lib/menu-board/zone-board-catalog";
@@ -241,6 +242,7 @@ export function buildRestaurantSmartTemplates(): Record<string, DesignData> {
     ...buildElegantFoodMenuCatalog(),
     ...buildDishCategoryBoards(),
     ...buildMixMenuCatalog(),
+    ...buildGourmetPizzaBoardCatalog(),
     ...buildZoneBoardCatalog(),
   };
 }

@@ -229,6 +229,14 @@ const META: Record<string, TemplateSeedMeta> = {
     default_duration_seconds: 20,
     sort_order: -25,
   },
+  "Gourmet Pizza Board": {
+    industry: "Restaurant & Food",
+    category: "Menu",
+    tags: ["pizza", "happy-hour", "combo", "multi-image", "3-column"],
+    orientation: "landscape",
+    default_duration_seconds: 18,
+    sort_order: -42,
+  },
   "Seasonal Menu Board": {
     industry: "Restaurant & Food",
     category: "Menu",

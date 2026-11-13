@@ -69,6 +69,7 @@ export function DesignEditorCanvas({
   onPanChange,
   interactionLocked = false,
   orgProfile = null,
+  showSafeArea = false,
 }: {
   orientation: Orientation;
   zoom: number;
@@ -86,6 +87,8 @@ export function DesignEditorCanvas({
   /** When true, block move/resize/drop (Smart Template layout lock). */
   interactionLocked?: boolean;
   orgProfile?: OrgProfile | null;
+  /** 5% TV overscan guide on the artboard — every template */
+  showSafeArea?: boolean;
 }) {
   const artboard = getArtboardSize(orientation);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -456,6 +459,20 @@ export function DesignEditorCanvas({
                 </div>
               );
             })}
+
+            {showSafeArea ? (
+              <div
+                className="pointer-events-none absolute z-30 border border-dashed border-amber-400/90 bg-amber-400/10"
+                aria-hidden
+                style={{
+                  left: artboard.width * 0.05,
+                  top: artboard.height * 0.05,
+                  width: artboard.width * 0.9,
+                  height: artboard.height * 0.9,
+                }}
+                title="TV safe area (5% overscan)"
+              />
+            ) : null}
 
             {guides.map((guide, index) => (
               <div

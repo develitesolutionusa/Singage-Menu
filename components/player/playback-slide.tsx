@@ -51,6 +51,7 @@ export function PlaybackSlide({
         playAnimations={playAnimations}
         animationKey={animationKey}
         deviceOrientation={slide.orientation}
+        autoOrientation={slide.orientation == null}
         className={className}
       />
     );

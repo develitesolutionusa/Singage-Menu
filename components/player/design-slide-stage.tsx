@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import { DesignElementView } from "@/components/design-editor/design-element-view";
+import { ScreenStage } from "@/components/menu-board/screen-stage";
+import { SafeAreaOverlay } from "@/components/menu-board/preview-toolbar";
 import { ZoneBoardStage } from "@/components/menu-board/zone-board-stage";
 import { TemplatePreview } from "@/components/templates/template-preview";
 import {
@@ -13,9 +15,11 @@ import {
 import { adaptDesignToOrientation } from "@/lib/design-orientation";
 import { isZoneBoardDesign } from "@/lib/menu-board/to-design-data";
 import { ensureSmartDesign } from "@/lib/smart-templates";
+import { useViewportOrientation } from "@/lib/use-viewport-orientation";
 import { cn } from "@/lib/utils";
 import type { DesignData, Orientation } from "@/types/db";
 
+/** @deprecated Prefer DEVICE_FRAMES in menu-board preview toolbar — kept for imports. */
 export type PreviewResolution =
   | "fit"
   | "1920x1080"
@@ -61,11 +65,14 @@ function animationCss(
  */
 export function DesignSlideStage({
   data,
-  orientation = "landscape",
+  orientation: orientationProp = "landscape",
   className,
   playAnimations = false,
   animationKey = 0,
   deviceOrientation,
+  showSafeArea = false,
+  /** When true, pick landscape/portrait from the live viewport and remap the design. */
+  autoOrientation = false,
 }: {
   data: DesignData | null | undefined;
   orientation?: Orientation;
@@ -73,39 +80,50 @@ export function DesignSlideStage({
   playAnimations?: boolean;
   animationKey?: string | number;
   deviceOrientation?: Orientation;
+  /** 5% TV overscan guide — available for every template */
+  showSafeArea?: boolean;
+  autoOrientation?: boolean;
 }) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const detected = useViewportOrientation(hostRef);
+  const orientation = autoOrientation ? detected : orientationProp;
+  const activeDeviceOrientation = deviceOrientation ?? orientation;
   const design = adaptDesignToOrientation(ensureSmartDesign(data), orientation);
 
   // Zone menu boards play through ScreenStage + ZoneRenderer (TV-faithful).
   if (isZoneBoardDesign(design) && design.zoneTemplate) {
     return (
-      <ZoneBoardStage
-        data={design}
-        orientation={orientation}
-        className={className}
-      />
+      <div ref={hostRef} className={cn("relative h-full w-full", className)}>
+        <ZoneBoardStage data={design} orientation={orientation} />
+        {showSafeArea ? <SafeAreaOverlay insetPercent={5} /> : null}
+      </div>
     );
   }
 
   const elements = getElements(design).filter((el) => {
     if (el.hidden) return false;
     const behavior = el.props.deviceBehavior ?? "all";
-    if (!deviceOrientation || behavior === "all") return true;
-    return behavior === deviceOrientation;
+    if (!activeDeviceOrientation || behavior === "all") return true;
+    return behavior === activeDeviceOrientation;
   });
   const artboard = getArtboardSize(orientation);
   const sorted = [...elements].sort((a, b) => a.zIndex - b.zIndex);
+  const letterbox = design.theme?.bg ?? "#0f172a";
 
   if (sorted.length === 0) {
     return (
-      <TemplatePreview data={design} className={cn("h-full w-full", className)} />
+      <div ref={hostRef} className={cn("relative h-full w-full", className)}>
+        <TemplatePreview data={design} className="h-full w-full" />
+        {showSafeArea ? <SafeAreaOverlay insetPercent={5} /> : null}
+      </div>
     );
   }
 
   return (
     <div
+      ref={hostRef}
       className={cn("relative h-full w-full overflow-hidden", className)}
-      style={{ background: design.theme?.bg ?? "#0f172a" }}
+      style={{ background: letterbox }}
     >
       <style>{`
         @keyframes design-preview-fade {
@@ -125,7 +143,12 @@ export function DesignSlideStage({
           to { opacity: 1; transform: scale(1); }
         }
       `}</style>
-      <ScaledArtboard width={artboard.width} height={artboard.height}>
+      {/* ScreenStage: fixed artboard + scale-to-fit — every template, any TV */}
+      <ScreenStage
+        canvasWidth={artboard.width}
+        canvasHeight={artboard.height}
+        letterboxColor={letterbox}
+      >
         {sorted.map((el, index) => (
           <AnimatedElement
             key={`${el.id}-${animationKey}`}
@@ -134,51 +157,8 @@ export function DesignSlideStage({
             staggerMs={index * 40}
           />
         ))}
-      </ScaledArtboard>
-    </div>
-  );
-}
-
-function ScaledArtboard({
-  width,
-  height,
-  children,
-}: {
-  width: number;
-  height: number;
-  children: React.ReactNode;
-}) {
-  const hostRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
-
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
-    const apply = () => {
-      const pw = host.clientWidth;
-      const ph = host.clientHeight;
-      if (!pw || !ph) return;
-      setScale(Math.min(pw / width, ph / height));
-    };
-    apply();
-    const ro = new ResizeObserver(apply);
-    ro.observe(host);
-    return () => ro.disconnect();
-  }, [width, height]);
-
-  return (
-    <div ref={hostRef} className="relative flex h-full w-full items-center justify-center">
-      <div
-        className="relative shrink-0 overflow-hidden"
-        style={{
-          width,
-          height,
-          transform: `scale(${scale})`,
-          transformOrigin: "center center",
-        }}
-      >
-        {children}
-      </div>
+        {showSafeArea ? <SafeAreaOverlay insetPercent={5} /> : null}
+      </ScreenStage>
     </div>
   );
 }

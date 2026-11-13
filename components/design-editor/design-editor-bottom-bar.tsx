@@ -2,6 +2,7 @@
 
 import {
   Copy,
+  Frame,
   Layers,
   Lock,
   Minus,
@@ -32,6 +33,8 @@ export function DesignEditorBottomBar({
   canUndo = false,
   canRedo = false,
   canMutate = false,
+  showSafeArea = false,
+  onToggleSafeArea,
 }: {
   layersOpen: boolean;
   onToggleLayers: () => void;
@@ -50,6 +53,8 @@ export function DesignEditorBottomBar({
   canUndo?: boolean;
   canRedo?: boolean;
   canMutate?: boolean;
+  showSafeArea?: boolean;
+  onToggleSafeArea?: () => void;
 }) {
   const unlockDisabled = locked && !canUnlock;
   const lockLabel = locked
@@ -99,11 +104,19 @@ export function DesignEditorBottomBar({
       </span>
       <ToolButton onClick={onZoomIn} label="Zoom in" icon={Plus} />
       <ToolButton onClick={onFit} label="Fit" icon={Scan} />
+      {onToggleSafeArea ? (
+        <ToolButton
+          active={showSafeArea}
+          onClick={onToggleSafeArea}
+          label="Safe area"
+          icon={Frame}
+        />
+      ) : null}
 
       <p className="ml-auto hidden text-[11px] text-zinc-400 sm:block">
         {locked
           ? "Layout locked · content editable · Unlock Layout needs permission"
-          : "Space=pan · Ctrl/Cmd+scroll=zoom · Del · Ctrl/Cmd+C/V/D/Z"}
+          : "Space=pan · Safe area=TV overscan · Preview=device frames"}
       </p>
     </footer>
   );

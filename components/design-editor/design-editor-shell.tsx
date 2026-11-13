@@ -132,6 +132,7 @@ export function DesignEditorShell({
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [showGrid] = useState(true);
+  const [showSafeArea, setShowSafeArea] = useState(false);
   const [layersOpen, setLayersOpen] = useState(false);
   const [layoutLocked, setLayoutLocked] = useState(
     () => resolvedDesign.layoutLocked === true,
@@ -637,6 +638,7 @@ export function DesignEditorShell({
             pan={pan}
             onPanChange={setPan}
             interactionLocked={layoutLocked}
+            showSafeArea={showSafeArea}
           />
 
           <DesignLayersPanel
@@ -718,6 +720,8 @@ export function DesignEditorShell({
         canUndo={history.past.length > 0}
         canRedo={history.future.length > 0}
         canMutate={canMutate}
+        showSafeArea={showSafeArea}
+        onToggleSafeArea={() => setShowSafeArea((v) => !v)}
       />
 
       <DesignPreviewMode

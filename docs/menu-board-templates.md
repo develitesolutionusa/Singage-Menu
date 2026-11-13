@@ -64,16 +64,30 @@ Device URL:
 
 `index` is 0-based left→right (then top→bottom).
 
-## Design Editor integration
+## Design Editor (every template)
 
-Zone boards are also **Smart Templates** in the Template Library / Design Editor:
+These capabilities apply to **all** Design Editor templates — not only zone demo boards:
 
-1. Converted via `zoneTemplateToDesignData()` → editable canvas elements + Manager content fields.
-2. Registered in `buildZoneBoardCatalog()` → `buildRestaurantSmartTemplates()`.
-3. Seeded to Supabase with `npx tsx scripts/upgrade-smart-templates.ts`.
-4. Player / Preview Mode uses `ZoneBoardStage` (TV-faithful renderer) when `design_data.zoneBoard === true`.
+| Capability | Where |
+|---|---|
+| Device frames (16:9, 9:16, 4:3, 21:9, 1:1, 3-screen wall) | Preview Mode toolbar |
+| Safe-area overlay (5% TV overscan) | Preview Mode + editor bottom bar **Safe area** |
+| `ScreenStage` scale-to-fit | Player + Preview (`DesignSlideStage`) |
+| Dotted leader menu rows | Compact `menu-card` elements |
+| Multi-screen wall preview | Preview → **3-screen wall** |
+| Auto orientation | Player detects viewport → landscape/portrait, remaps design to fill screen |
 
-**In the editor:** Templates → pick “Seasonal Menu Board”, “Promo Ticker Board”, or a Wall board → edit items/prices in Manager content (or unlock layout to drag). Preview / Publish plays the zone renderer.
+Open any loop slide → **Preview** to test frames. On the canvas, toggle **Safe area** in the bottom bar.
+
+### Auto orientation (player)
+
+The live player no longer forces the loop’s saved landscape/portrait. It reads the stage size (after TV rotation) and:
+
+1. Picks **portrait** if height > width, else **landscape**
+2. Runs `adaptDesignToOrientation` (or authored `orientationLayouts`) so the layout fills that artboard
+3. Uses `ScreenStage` scale-to-fit so the artboard covers the physical screen
+
+You don’t need to change template orientation per device.
 
 ## How to add a new template
 

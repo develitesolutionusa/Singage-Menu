@@ -12,7 +12,8 @@ import {
 } from "@/lib/player-cache";
 import { PlLoader } from "@/components/ui/pl-loader";
 import { PlaybackSlide } from "@/components/player/playback-slide";
-import type { DesignData } from "@/types/db";
+import { useViewportOrientation } from "@/lib/use-viewport-orientation";
+import type { DesignData, Orientation } from "@/types/db";
 
 const HEARTBEAT_MS = 30_000;
 const POLL_MS = 15_000;
@@ -42,54 +43,6 @@ function rotationStyle(rotation: 0 | 90 | 180 | 270): React.CSSProperties {
   };
 }
 
-/** Frame content to loop orientation inside the rotated stage (matches Loop Editor preview). */
-function contentFrameStyle(
-  orientation: "landscape" | "portrait",
-  rotation: 0 | 90 | 180 | 270,
-): React.CSSProperties {
-  const stageIsPortrait = rotation === 90 || rotation === 270;
-  const contentIsPortrait = orientation === "portrait";
-
-  // Matching stage + content → fill the physical screen
-  if (stageIsPortrait === contentIsPortrait) {
-    return { width: "100%", height: "100%" };
-  }
-
-  if (contentIsPortrait) {
-    // Portrait loop on a landscape stage — 9:16 letterbox (editor preview)
-    return {
-      height: "100%",
-      width: "auto",
-      maxWidth: "100%",
-      aspectRatio: "9 / 16",
-    };
-  }
-
-  // Landscape loop on a portrait stage — 16:9 pillarbox
-  return {
-    width: "100%",
-    height: "auto",
-    maxHeight: "100%",
-    aspectRatio: "16 / 9",
-  };
-}
-
-function resolveItemOrientation(
-  item: PlaybackItem,
-  payload: PlaybackPayload,
-): "landscape" | "portrait" {
-  if (item.orientation === "portrait" || item.orientation === "landscape") {
-    return item.orientation;
-  }
-  if (item.sourceLoopId && payload.loops?.length) {
-    const loop = payload.loops.find((l) => l.id === item.sourceLoopId);
-    if (loop?.orientation === "portrait") return "portrait";
-    if (loop?.orientation === "landscape") return "landscape";
-  }
-  if (payload.loop?.orientation === "portrait") return "portrait";
-  return "landscape";
-}
-
 function createAnonClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -108,6 +61,9 @@ export function PlayerRuntime({ playerId }: { playerId: string }) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const indexRef = useRef(0);
   const payloadRef = useRef<PlaybackPayload | null>(null);
+  // Must stay above any early returns (Rules of Hooks).
+  const stageRef = useRef<HTMLDivElement>(null);
+  const orientation = useViewportOrientation(stageRef);
 
   useEffect(() => {
     indexRef.current = index;
@@ -412,7 +368,6 @@ export function PlayerRuntime({ playerId }: { playerId: string }) {
   }
 
   const current = payload.items[index] ?? payload.items[0];
-  const orientation = resolveItemOrientation(current, payload);
   const exceptionLabel = payload.exception
     ? `Exception: ${payload.exception.name}`
     : "No Exception";
@@ -420,22 +375,21 @@ export function PlayerRuntime({ playerId }: { playerId: string }) {
   return (
     <div className="relative min-h-screen overflow-hidden bg-black text-white">
       <div
+        ref={stageRef}
         className="flex items-center justify-center overflow-hidden bg-black"
         style={rotationStyle(payload.player.rotation)}
       >
-        <div
-          className="relative overflow-hidden bg-black"
-          style={contentFrameStyle(orientation, payload.player.rotation)}
-        >
+        {/* Always fill the physical stage; ScreenStage + orientation remap cover the screen */}
+        <div className="relative h-full w-full overflow-hidden bg-black">
           <MediaSlide
-            key={`${current.id}-${index}`}
+            key={`${current.id}-${index}-${orientation}`}
             item={current}
             orientation={orientation}
           />
         </div>
       </div>
       <div className="pointer-events-none absolute left-3 top-3 rounded bg-black/50 px-2 py-1 text-[10px] text-zinc-300">
-        {payload.campaign?.name ?? "Campaign"} · {exceptionLabel}
+        {payload.campaign?.name ?? "Campaign"} · {exceptionLabel} · {orientation}
       </div>
       <StatusBits offline={offline} realtimeOk={realtimeOk} compact />
     </div>
@@ -447,7 +401,7 @@ function MediaSlide({
   orientation,
 }: {
   item: PlaybackItem;
-  orientation: "landscape" | "portrait";
+  orientation: Orientation;
 }) {
   if (item.itemType === "design" || item.fileType === "design") {
     if (!item.designData) {

@@ -5,10 +5,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Maximize2,
-  Monitor,
   Pause,
   Play,
-  Smartphone,
   X,
 } from "lucide-react";
 import {
@@ -16,9 +14,10 @@ import {
   type PlaybackSlideInput,
 } from "@/components/player/playback-slide";
 import {
-  PREVIEW_RESOLUTIONS,
-  type PreviewResolution,
-} from "@/components/player/design-slide-stage";
+  DEVICE_FRAMES,
+  SafeAreaOverlay,
+  type DeviceFrameId,
+} from "@/components/menu-board/preview-toolbar";
 import { cn } from "@/lib/utils";
 import type { Orientation } from "@/types/db";
 
@@ -29,6 +28,20 @@ export type DesignPreviewSlide = {
   slide: PlaybackSlideInput;
 };
 
+function fitFrame(
+  hostW: number,
+  hostH: number,
+  ratio: number,
+): { width: number; height: number } {
+  const byWidth = { width: hostW, height: hostW / ratio };
+  if (byWidth.height <= hostH) return byWidth;
+  return { width: hostH * ratio, height: hostH };
+}
+
+/**
+ * Fullscreen Preview for ANY design template.
+ * Device frames (16:9 / 9:16 / 4:3 / 21:9 / 3-screen wall) + safe-area overscan overlay.
+ */
 export function DesignPreviewMode({
   open,
   onClose,
@@ -44,20 +57,36 @@ export function DesignPreviewMode({
   defaultOrientation?: Orientation;
   title?: string;
 }) {
-  const [orientation, setOrientation] = useState<Orientation>(defaultOrientation);
-  const [resolution, setResolution] = useState<PreviewResolution>("fit");
+  const [frameId, setFrameId] = useState<DeviceFrameId>(
+    defaultOrientation === "portrait" ? "9-16" : "16-9",
+  );
+  const [safeArea, setSafeArea] = useState(false);
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(true);
   const [animationKey, setAnimationKey] = useState(0);
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [frameSize, setFrameSize] = useState({ width: 0, height: 0 });
   const stageRef = useRef<HTMLDivElement>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const safeSlides = slides.length > 0 ? slides : [];
+  const preset =
+    DEVICE_FRAMES.find((p) => p.id === frameId) ?? DEVICE_FRAMES[1];
+
+  // Fill = auto from host size; fixed frames force landscape/portrait.
+  const orientation: Orientation =
+    frameId === "fill"
+      ? frameSize.height > frameSize.width
+        ? "portrait"
+        : "landscape"
+      : frameId === "9-16" || frameId === "wall-3"
+        ? "portrait"
+        : "landscape";
 
   useEffect(() => {
     if (!open) return;
-    setOrientation(defaultOrientation);
+    setFrameId(defaultOrientation === "portrait" ? "9-16" : "16-9");
     setPlaying(true);
     setElapsedMs(0);
     setAnimationKey((k) => k + 1);
@@ -66,9 +95,27 @@ export function DesignPreviewMode({
         ? slides.findIndex((s) => s.id === initialSlideId)
         : 0;
     setIndex(start >= 0 ? start : 0);
-    // Only re-seed when preview opens or the starting slide changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialSlideId, defaultOrientation]);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host || !open) return;
+    const apply = () => {
+      const pad = 32;
+      const hw = Math.max(1, host.clientWidth - pad);
+      const hh = Math.max(1, host.clientHeight - pad);
+      if (preset.ratio == null) {
+        setFrameSize({ width: host.clientWidth, height: host.clientHeight });
+        return;
+      }
+      setFrameSize(fitFrame(hw, hh, preset.ratio));
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(host);
+    return () => ro.disconnect();
+  }, [preset.ratio, open, frameId]);
 
   const current = safeSlides[index] ?? null;
   const durationMs = Math.max(1, (current?.durationSeconds ?? 10) * 1000);
@@ -100,7 +147,6 @@ export function DesignPreviewMode({
   const goPrev = useCallback(() => goTo(index - 1), [goTo, index]);
   const goNext = useCallback(() => goTo(index + 1), [goTo, index]);
 
-  // Auto-advance while playing (images/design); video ends via onVideoEnded
   useEffect(() => {
     if (!open || !playing || !current) return;
     if (current.slide.kind === "video") return;
@@ -137,6 +183,9 @@ export function DesignPreviewMode({
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
         goNext();
+      } else if (e.key === "s" || e.key === "S") {
+        e.preventDefault();
+        setSafeArea((v) => !v);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -147,159 +196,148 @@ export function DesignPreviewMode({
     const el = stageRef.current;
     if (!el) return;
     try {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen();
-      } else {
-        await el.requestFullscreen();
-      }
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await el.requestFullscreen();
     } catch {
-      // Browser may block fullscreen without gesture / preference
+      /* blocked */
     }
   }
-
-  const resMeta = PREVIEW_RESOLUTIONS.find((r) => r.id === resolution);
-  const frameStyle: React.CSSProperties =
-    resolution === "fit" || !resMeta?.width || !resMeta.height
-      ? orientation === "portrait"
-        ? {
-            aspectRatio: "9 / 16",
-            height: "min(78vh, 100%)",
-            width: "auto",
-            maxWidth: "100%",
-          }
-        : {
-            aspectRatio: "16 / 9",
-            width: "min(92vw, 100%)",
-            height: "auto",
-            maxHeight: "78vh",
-          }
-      : {
-          width: `min(${resMeta.width}px, 96vw)`,
-          aspectRatio: `${resMeta.width} / ${resMeta.height}`,
-          maxHeight: "78vh",
-        };
 
   if (!open) return null;
 
   const progress = Math.min(1, elapsedMs / durationMs);
+  const showWall = frameId === "wall-3";
 
   return (
     <div className="fixed inset-0 z-[80] flex flex-col bg-zinc-950 text-white">
-      {/* Top chrome */}
-      <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-zinc-800 bg-zinc-950/95 px-3 py-2 backdrop-blur sm:px-4">
-        <div className="mr-auto min-w-0">
-          <p className="truncate text-sm font-semibold">{title}</p>
-          <p className="truncate text-xs text-zinc-400">
-            {current
-              ? `${current.name} · ${index + 1}/${safeSlides.length}`
-              : "No slides"}
-            {" · "}
-            {orientation}
-            {resolution !== "fit" ? ` · ${resolution}` : ""}
-          </p>
-        </div>
+      <header className="flex shrink-0 flex-col gap-2 border-b border-zinc-800 bg-zinc-950/95 px-3 py-2 backdrop-blur sm:px-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="mr-auto min-w-0">
+            <p className="truncate text-sm font-semibold">{title}</p>
+            <p className="truncate text-xs text-zinc-400">
+              {current
+                ? `${current.name} · ${index + 1}/${safeSlides.length}`
+                : "No slides"}
+              {" · "}
+              {DEVICE_FRAMES.find((f) => f.id === frameId)?.label}
+              {safeArea ? " · Safe area" : ""}
+            </p>
+          </div>
 
-        <div className="inline-flex rounded-lg border border-zinc-700 bg-zinc-900 p-0.5">
           <button
             type="button"
-            onClick={() => setOrientation("landscape")}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium",
-              orientation === "landscape"
-                ? "bg-zinc-100 text-zinc-900"
-                : "text-zinc-300 hover:bg-zinc-800",
-            )}
+            onClick={() => void toggleBrowserFullscreen()}
+            className="inline-flex items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-zinc-200 hover:bg-zinc-800"
           >
-            <Monitor className="h-3.5 w-3.5" />
-            Landscape
+            <Maximize2 className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Fullscreen</span>
           </button>
           <button
             type="button"
-            onClick={() => setOrientation("portrait")}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium",
-              orientation === "portrait"
-                ? "bg-zinc-100 text-zinc-900"
-                : "text-zinc-300 hover:bg-zinc-800",
-            )}
+            onClick={onClose}
+            className="inline-flex items-center gap-1 rounded-md bg-teal-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-teal-500"
           >
-            <Smartphone className="h-3.5 w-3.5" />
-            Portrait
+            <X className="h-3.5 w-3.5" />
+            Close Preview
           </button>
         </div>
 
-        <label className="flex items-center gap-2 text-xs text-zinc-400">
-          <span className="hidden sm:inline">Resolution</span>
-          <select
-            value={resolution}
-            onChange={(e) =>
-              setResolution(e.target.value as PreviewResolution)
-            }
-            className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-100 outline-none focus:border-teal-500"
+        {/* Device frames — applies to every template */}
+        <div className="flex flex-wrap items-center gap-1">
+          {DEVICE_FRAMES.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => setFrameId(f.id)}
+              className={cn(
+                "rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
+                frameId === f.id
+                  ? "bg-teal-500 text-white"
+                  : "bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-white",
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setSafeArea((v) => !v)}
+            className={cn(
+              "ml-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
+              safeArea
+                ? "bg-amber-500 text-black"
+                : "bg-zinc-900 text-zinc-300 hover:bg-zinc-800",
+            )}
+            title="Toggle 5% TV overscan safe area (S)"
           >
-            {PREVIEW_RESOLUTIONS.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <button
-          type="button"
-          onClick={() => void toggleBrowserFullscreen()}
-          className="inline-flex items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-zinc-200 hover:bg-zinc-800"
-          title="Browser fullscreen"
-        >
-          <Maximize2 className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">Fullscreen</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={onClose}
-          className="inline-flex items-center gap-1.5 rounded-md border border-zinc-600 bg-zinc-800 px-2.5 py-1.5 text-xs font-medium text-zinc-100 hover:bg-zinc-700"
-        >
-          Back to Editor
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          className="inline-flex items-center gap-1 rounded-md bg-teal-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-teal-500"
-        >
-          <X className="h-3.5 w-3.5" />
-          Close Preview
-        </button>
+            Safe area
+          </button>
+        </div>
       </header>
 
-      {/* Stage */}
       <div
-        ref={stageRef}
-        className="relative flex min-h-0 flex-1 items-center justify-center bg-black p-4"
+        ref={(node) => {
+          stageRef.current = node;
+          hostRef.current = node;
+        }}
+        className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black p-4"
       >
         {framedSlide ? (
-          <div
-            className="relative overflow-hidden rounded-sm bg-zinc-950 shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
-            style={frameStyle}
-          >
-            <PlaybackSlide
-              slide={framedSlide}
-              playAnimations={playing}
-              animationKey={animationKey}
-              autoPlayVideo={playing}
-              muted
-              className="h-full w-full"
-              onVideoEnded={() => {
-                if (playing) goNext();
+          showWall ? (
+            <div
+              className="grid h-full max-h-full w-full max-w-[96vw] grid-cols-3 gap-[0.6%] overflow-hidden"
+              style={{
+                width: frameSize.width || "100%",
+                height: frameSize.height || "100%",
               }}
-            />
-          </div>
+            >
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="relative min-h-0 min-w-0 overflow-hidden rounded-sm ring-1 ring-white/10"
+                >
+                  <PlaybackSlide
+                    slide={framedSlide}
+                    playAnimations={playing}
+                    animationKey={`${animationKey}-${i}`}
+                    autoPlayVideo={playing}
+                    muted
+                    className="h-full w-full"
+                  />
+                  {safeArea ? <SafeAreaOverlay insetPercent={5} /> : null}
+                  <span className="pointer-events-none absolute bottom-2 left-2 rounded bg-black/60 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white/90">
+                    Screen {i + 1}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div
+              className="relative overflow-hidden rounded-sm bg-zinc-950 shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
+              style={{
+                width: frameSize.width || "100%",
+                height: frameSize.height || "100%",
+              }}
+            >
+              <PlaybackSlide
+                slide={framedSlide}
+                playAnimations={playing}
+                animationKey={animationKey}
+                autoPlayVideo={playing}
+                muted
+                className="h-full w-full"
+                onVideoEnded={() => {
+                  if (playing) goNext();
+                }}
+              />
+              {safeArea ? <SafeAreaOverlay insetPercent={5} /> : null}
+            </div>
+          )
         ) : (
           <p className="text-sm text-zinc-500">Nothing to preview yet.</p>
         )}
       </div>
 
-      {/* Transport */}
       <footer className="shrink-0 border-t border-zinc-800 bg-zinc-950/95 px-3 py-3 sm:px-4">
         <div className="mx-auto mb-2 h-1 max-w-3xl overflow-hidden rounded-full bg-zinc-800">
           <div
@@ -340,7 +378,7 @@ export function DesignPreviewMode({
             <ChevronRight className="h-4 w-4" />
           </button>
           <span className="ml-3 hidden text-xs text-zinc-500 sm:inline">
-            Space play/pause · ← → slides · Esc close
+            Device frames · Safe area (S) · Space play · Esc close
           </span>
         </div>
       </footer>
